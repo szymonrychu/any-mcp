@@ -154,3 +154,18 @@ async def test_modern_capabilities_tools_only(config: Path) -> None:
         caps = client.server_capabilities
         assert caps is not None
         assert set(caps.model_dump(exclude_none=True, exclude_unset=True)) == {"tools"}
+
+
+async def test_retry_carries_request_state(config: Path) -> None:
+    """The adapter hands the retry's requestState to the plugin (the example needs it)."""
+    async with _client("stdio", config, "", "auto") as client:
+        first = await client.session.call_tool(
+            TOOL, {"record_id": "r1"}, allow_input_required=True
+        )
+        assert isinstance(first, InputRequiredResult)
+        assert first.request_state is not None
+        answer = {"confirm": {"action": "accept", "content": {"confirm": True}}}
+        right = await client.session.call_tool(
+            TOOL, {"record_id": "r1"}, input_responses=answer, request_state=first.request_state
+        )
+        assert right.structured_content == {"deleted": True, "record_id": "r1"}

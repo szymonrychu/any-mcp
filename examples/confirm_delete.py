@@ -33,7 +33,12 @@ CONFIRM_SCHEMA = {
 
 
 def _confirmed(call: ToolCall) -> bool:
-    """Whether the client accepted the form and answered ``confirm: true``."""
+    """Whether the client accepted the form and answered ``confirm: true``.
+
+    The retry must also echo the ``requestState`` this plugin issued (the record id).
+    """
+    if call.request_state != call.arguments["record_id"]:
+        return False
     answer = call.input_responses.get("confirm")
     if not isinstance(answer, dict) or answer.get("action") != "accept":
         return False
