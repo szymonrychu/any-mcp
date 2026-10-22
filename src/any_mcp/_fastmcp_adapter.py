@@ -62,7 +62,7 @@ import contextlib
 import hmac
 import ipaddress
 import logging
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlsplit
@@ -284,8 +284,14 @@ class _UnknownToolGuard(Middleware):
 class Server:
     """An any-mcp MCP server: the registry, its config and the FastMCP instance serving it."""
 
-    def __init__(self, registry: ToolRegistry, config: AnyMcpConfig) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        config: AnyMcpConfig,
+        aclose: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self.registry = registry
+        self._aclose = aclose
         self.config = config
         self._bus = InMemorySubscriptionBus()
         self._listen = ListenHandler(self._bus)
@@ -317,6 +323,12 @@ class Server:
         low.get_capabilities = tools_only
         low.middleware.insert(0, self._track_legacy)
         registry.add_listener(self._tools_changed)
+
+    async def aclose(self) -> None:
+        """Release what the server's owner handed over (the plugin HTTP clients), once, at
+        final shutdown. The lifespan never calls this: it can run more than once."""
+        if self._aclose is not None:
+            await self._aclose()
 
     @asynccontextmanager
     async def _lifespan(self, _app: Any) -> AsyncIterator[dict[str, Any]]:
@@ -351,14 +363,26 @@ class Server:
             await connection.send_tool_list_changed()
 
 
-def build_server(registry: ToolRegistry, config: AnyMcpConfig) -> Server:
-    """Wrap ``registry`` in a FastMCP server configured from ``config``."""
-    return Server(registry, config)
+def build_server(
+    registry: ToolRegistry,
+    config: AnyMcpConfig,
+    *,
+    aclose: Callable[[], Awaitable[None]] | None = None,
+) -> Server:
+    """Wrap ``registry`` in a FastMCP server configured from ``config``.
+
+    ``aclose`` releases the owner's resources; ``run_stdio`` and ``run_http`` call it once
+    serving ends for good.
+    """
+    return Server(registry, config, aclose)
 
 
 async def run_stdio(server: Server) -> None:
     """Serve ``server`` over stdio until stdin closes; stdout carries only MCP messages."""
-    await server._fastmcp.run_stdio_async(show_banner=False)
+    try:
+        await server._fastmcp.run_stdio_async(show_banner=False)
+    finally:
+        await server.aclose()
 
 
 # -- streamable HTTP -------------------------------------------------------------------------
@@ -456,7 +480,10 @@ async def run_http(server: Server, settings: HttpSettings) -> None:
         log_config=None,
         timeout_graceful_shutdown=2,
     )
-    await uvicorn.Server(config).serve()
+    try:
+        await uvicorn.Server(config).serve()
+    finally:
+        await server.aclose()
 
 
 # -- in-memory client ------------------------------------------------------------------------

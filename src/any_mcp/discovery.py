@@ -32,6 +32,20 @@ class LoadedPlugin:
     reload_every: float | None
 
 
+class LoadedPlugins(list[LoadedPlugin]):
+    """The plugins ``load_plugins`` built, which also own their HTTP clients.
+
+    The owner of this list calls ``aclose()`` once at final shutdown; a registry restart must
+    not, because the clients are reused by the next start. Closing twice is a no-op.
+    """
+
+    async def aclose(self) -> None:
+        """Close every per-plugin ``httpx.AsyncClient``; safe to call again."""
+        for plugin in self:
+            if not plugin.ctx.http.is_closed:
+                await plugin.ctx.http.aclose()
+
+
 def _check(target: object, ref: str) -> type[Plugin]:
     if not (isinstance(target, type) and issubclass(target, Plugin)):
         raise ConfigError(f"plugin {ref!r}: target is not a Plugin subclass")
@@ -83,9 +97,9 @@ def _validate_config(cls: type[Plugin], entry: PluginEntry, index: int) -> BaseM
 
 def load_plugins(
     config: AnyMcpConfig, *, http_transport: httpx.AsyncBaseTransport | None = None
-) -> list[LoadedPlugin]:
+) -> LoadedPlugins:
     """Instantiate every configured plugin with its context, in config order."""
-    loaded: list[LoadedPlugin] = []
+    loaded = LoadedPlugins()
     for index, entry in enumerate(config.plugins):
         cls = resolve_plugin_class(entry.plugin, python_path=config.python_path)
         validated = _validate_config(cls, entry, index)

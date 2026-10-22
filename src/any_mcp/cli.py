@@ -88,7 +88,8 @@ def _build_config(args: argparse.Namespace) -> AnyMcpConfig:
 async def _list_tools(config: AnyMcpConfig) -> list[dict[str, object]]:
     from any_mcp.registry import ToolRegistry
 
-    registry = ToolRegistry(load_plugins(config), config.tools)
+    loaded = load_plugins(config)
+    registry = ToolRegistry(loaded, config.tools)
     await registry.start()
     try:
         return [
@@ -97,6 +98,7 @@ async def _list_tools(config: AnyMcpConfig) -> list[dict[str, object]]:
         ]
     finally:
         await registry.stop()
+        await loaded.aclose()
 
 
 async def _serve_stdio(config: AnyMcpConfig) -> bool:
@@ -109,8 +111,9 @@ async def _serve_stdio(config: AnyMcpConfig) -> bool:
     from any_mcp._fastmcp_adapter import build_server, run_stdio
     from any_mcp.registry import ToolRegistry
 
-    registry = ToolRegistry(load_plugins(config), config.tools)
-    task = asyncio.ensure_future(run_stdio(build_server(registry, config)))
+    loaded = load_plugins(config)
+    registry = ToolRegistry(loaded, config.tools)
+    task = asyncio.ensure_future(run_stdio(build_server(registry, config, aclose=loaded.aclose)))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     with contextlib.suppress(NotImplementedError, RuntimeError):
@@ -128,6 +131,7 @@ async def _serve_stdio(config: AnyMcpConfig) -> bool:
         return True
     finally:
         waiter.cancel()
+        await loaded.aclose()
 
 
 def _http_settings(config: AnyMcpConfig, args: argparse.Namespace) -> HttpSettings:
@@ -142,8 +146,12 @@ async def _serve_http(config: AnyMcpConfig, settings: HttpSettings) -> None:
     from any_mcp._fastmcp_adapter import build_server, run_http
     from any_mcp.registry import ToolRegistry
 
-    registry = ToolRegistry(load_plugins(config), config.tools)
-    await run_http(build_server(registry, config), settings)
+    loaded = load_plugins(config)
+    registry = ToolRegistry(loaded, config.tools)
+    try:
+        await run_http(build_server(registry, config, aclose=loaded.aclose), settings)
+    finally:
+        await loaded.aclose()
 
 
 def _config_error(exc: BaseException) -> ConfigError | None:

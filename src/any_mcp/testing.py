@@ -26,7 +26,7 @@ from pydantic import ValidationError
 
 from any_mcp._fastmcp_adapter import InMemoryClient, Server, build_server, in_memory_client
 from any_mcp.config import AnyMcpConfig, load_config
-from any_mcp.discovery import load_plugins
+from any_mcp.discovery import LoadedPlugin, load_plugins
 from any_mcp.errors import ConfigError
 from any_mcp.plugin import Plugin
 from any_mcp.registry import ToolRegistry
@@ -92,6 +92,7 @@ class PluginHarness:
         self._config = _build_config({"plugins": [entry]})
         self._transport = transport
         self._stack: AsyncExitStack | None = None
+        self._loaded: list[LoadedPlugin] = []
         self._server: Server | None = None
         self._client: InMemoryClient | None = None
 
@@ -105,6 +106,7 @@ class PluginHarness:
         harness._config = load_config(path)
         harness._transport = transport
         harness._stack = None
+        harness._loaded = []
         harness._server = None
         harness._client = None
         return harness
@@ -115,9 +117,11 @@ class PluginHarness:
             if self._synthetic is not None:
                 stack.callback(sys.modules.pop, self._synthetic, None)
             loaded = load_plugins(self._config, http_transport=self._transport)
-            for plugin in loaded:
-                stack.push_async_callback(plugin.ctx.http.aclose)
-            self._server = build_server(ToolRegistry(loaded, self._config.tools), self._config)
+            self._loaded = loaded
+            stack.push_async_callback(loaded.aclose)
+            self._server = build_server(
+                ToolRegistry(loaded, self._config.tools), self._config, aclose=loaded.aclose
+            )
             self._client = await stack.enter_async_context(in_memory_client(self._server))
         except BaseException as exc:
             await stack.aclose()

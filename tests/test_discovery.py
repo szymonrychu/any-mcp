@@ -148,3 +148,57 @@ def test_import_time_failure_is_config_error(tmp_path: Path) -> None:
         with pytest.raises(ConfigError, match=ref) as info:
             resolve_plugin_class(ref, python_path=[str(tmp_path)])
         assert text in str(info.value).lower()
+
+
+async def test_loaded_plugins_aclose_closes_http_clients() -> None:
+    cfg = _config(
+        {"name": "a", "plugin": f"{__name__}:Demo"},
+        {"name": "b", "plugin": f"{__name__}:Demo"},
+    )
+    loaded = load_plugins(cfg)
+    assert [lp.ctx.http.is_closed for lp in loaded] == [False, False]
+    await loaded.aclose()
+    assert [lp.ctx.http.is_closed for lp in loaded] == [True, True]
+    await loaded.aclose()  # a second call is a no-op
+
+
+async def test_owners_close_http_clients_on_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    from any_mcp import cli
+    from any_mcp._fastmcp_adapter import build_server, run_stdio
+    from any_mcp.registry import ToolRegistry
+    from any_mcp.testing import PluginHarness
+
+    cfg = _config({"name": "a", "plugin": f"{__name__}:Demo"})
+    made: list = []
+    real = cli.load_plugins
+
+    def spy(config: AnyMcpConfig):
+        made.append(real(config))
+        return made[-1]
+
+    monkeypatch.setattr(cli, "load_plugins", spy)
+
+    # CLI: --list-tools path
+    await cli._list_tools(cfg)
+    assert made[-1][0].ctx.http.is_closed
+
+    # CLI: stdio path (stdin closes immediately -> server returns)
+    async def fake_run_stdio(self, **_kw) -> None:
+        return None
+
+    monkeypatch.setattr("fastmcp.FastMCP.run_stdio_async", fake_run_stdio)
+    await cli._serve_stdio(cfg)
+    assert made[-1][0].ctx.http.is_closed
+
+    # adapter: final shutdown of run_stdio closes; a server never run stays open
+    loaded = load_plugins(cfg)
+    server = build_server(ToolRegistry(loaded, cfg.tools), cfg, aclose=loaded.aclose)
+    assert not loaded[0].ctx.http.is_closed
+    await run_stdio(server)
+    assert loaded[0].ctx.http.is_closed
+
+    # harness
+    async with PluginHarness(Demo) as h:
+        clients = [lp.ctx.http for lp in h._loaded]
+        assert not any(c.is_closed for c in clients)
+    assert all(c.is_closed for c in clients)
