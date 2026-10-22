@@ -348,3 +348,17 @@ def test_unbound_request_reload_logs_debug(caplog):
     with caplog.at_level(logging.DEBUG, logger="test"):
         ctx.request_reload()
     assert any(r.levelno == logging.DEBUG for r in caplog.records)
+
+
+async def test_tool_returning_bytes_is_binary():
+    class P(Plugin):
+        @tool
+        async def blob(self) -> bytes:
+            """Return bytes."""
+            return b"\xff\xfe"
+
+    p = P()
+    p.ctx = make_ctx()
+    spec = (await _tools(p))[0]
+    raw = await p.call(make_call(p, spec))
+    assert raw.body == b"\xff\xfe"

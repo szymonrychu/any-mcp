@@ -107,7 +107,10 @@ def _build_spec(instance: Plugin, fn: Callable[..., Any], opts: _ToolOptions) ->
     bound = getattr(instance, fn.__name__)
 
     async def handler(call: ToolCall) -> Any:
-        return to_jsonable_python(await bound(**call.arguments))
+        value = await bound(**call.arguments)
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value)
+        return to_jsonable_python(value)
 
     return ToolSpec(
         name=name,
