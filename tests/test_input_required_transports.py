@@ -159,9 +159,7 @@ async def test_modern_capabilities_tools_only(config: Path) -> None:
 async def test_retry_carries_request_state(config: Path) -> None:
     """The adapter hands the retry's requestState to the plugin (the example needs it)."""
     async with _client("stdio", config, "", "auto") as client:
-        first = await client.session.call_tool(
-            TOOL, {"record_id": "r1"}, allow_input_required=True
-        )
+        first = await client.session.call_tool(TOOL, {"record_id": "r1"}, allow_input_required=True)
         assert isinstance(first, InputRequiredResult)
         assert first.request_state is not None
         answer = {"confirm": {"action": "accept", "content": {"confirm": True}}}
