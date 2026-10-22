@@ -49,7 +49,7 @@ async def call_tool(
     *,
     request_id: str | None = None,
 ) -> ToolResult:
-    """Run one call. Raises ``UnknownTool`` for an unknown name and nothing else but cancellation."""
+    """Run one call. Raises ``UnknownTool`` for an unknown name; only cancellation escapes otherwise."""
     tool = registry.get(name)
     if tool is None:
         raise UnknownTool(f"unknown tool: {name}")
