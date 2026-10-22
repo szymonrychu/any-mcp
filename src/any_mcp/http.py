@@ -119,7 +119,10 @@ async def execute_binding(
         value = arguments.get(arg)
         if value is not None:
             request_headers[header] = _text(value)
-    request_headers.update(headers or {})
+    for name, value in (headers or {}).items():
+        for existing in [k for k in request_headers if k.lower() == name.lower()]:
+            del request_headers[existing]
+        request_headers[name] = value
 
     kwargs: dict[str, Any] = {}
     body = _body(binding, arguments, consumed)

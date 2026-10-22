@@ -75,6 +75,14 @@ async def test_headers_and_credentials():
     assert req.headers["x-other"] == "v"
     assert req.headers["authorization"] == "Bearer z"
     assert req.headers["user-agent"].startswith("any-mcp/")
+    assert req.headers.get_list("x-token") == ["cred"]
+
+
+async def test_credentials_win_case_insensitively():
+    seen, client = recording()
+    binding = HttpBinding("GET", "/h", headers={"tok": "X-Token"})
+    await execute_binding(client, make_call(binding, {"tok": "arg"}), headers={"x-token": "cred"})
+    assert seen[0].headers.get_list("x-token") == ["cred"]
 
 
 async def test_base_url_resolution():
