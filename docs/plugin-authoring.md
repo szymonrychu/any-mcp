@@ -211,14 +211,14 @@ The pieces:
 - **Secrets from the environment.** The config file reads `${GITHUB_TOKEN}` from the environment, so the token is never written in the file:
 
   ```yaml
-# Run with: GITHUB_TOKEN=... python -m any_mcp --config examples/github_issues/any-mcp.yaml
-python_path: ["."]
-plugins:
-  - name: github
-    plugin: github_issues:GithubIssues
-    config:
-      token: ${GITHUB_TOKEN}      # read from the environment, never written in the file
-      read_only: true             # set false to allow add_comment
+  # Run with: GITHUB_TOKEN=... python -m any_mcp --config examples/github_issues/any-mcp.yaml
+  python_path: ["."]
+  plugins:
+    - name: github
+      plugin: github_issues:GithubIssues
+      config:
+        token: ${GITHUB_TOKEN}      # read from the environment, never written in the file
+        read_only: true             # set false to allow add_comment
   ```
 
 - **Credentials.** `credentials(call)` returns the outbound headers for HTTP-bound tools. Tool methods that call `self.ctx.http` directly add the headers themselves, as `_request` does.
