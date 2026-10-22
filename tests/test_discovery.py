@@ -182,23 +182,74 @@ async def test_owners_close_http_clients_on_shutdown(monkeypatch: pytest.MonkeyP
     await cli._list_tools(cfg)
     assert made[-1][0].ctx.http.is_closed
 
-    # CLI: stdio path (stdin closes immediately -> server returns)
+    # CLI: stdio path - the clients stay open while the server runs, closed once it returns
+    import asyncio
+
+    release = asyncio.Event()
+    seen: list[bool] = []
+
     async def fake_run_stdio(self, **_kw) -> None:
-        return None
+        seen.append(made[-1][0].ctx.http.is_closed)
+        await release.wait()
 
     monkeypatch.setattr("fastmcp.FastMCP.run_stdio_async", fake_run_stdio)
-    await cli._serve_stdio(cfg)
+    serving = asyncio.ensure_future(cli._serve_stdio(cfg))
+    while not seen:
+        await asyncio.sleep(0)
+    assert seen == [False]
+    assert not made[-1][0].ctx.http.is_closed
+    release.set()
+    await serving
     assert made[-1][0].ctx.http.is_closed
 
     # adapter: final shutdown of run_stdio closes; a server never run stays open
     loaded = load_plugins(cfg)
     server = build_server(ToolRegistry(loaded, cfg.tools), cfg, aclose=loaded.aclose)
     assert not loaded[0].ctx.http.is_closed
+    release.clear()
+    release.set()
     await run_stdio(server)
     assert loaded[0].ctx.http.is_closed
+
+    # CLI: http path - closed after the server stops, not while it serves
+    import uvicorn
+
+    from any_mcp.config import HttpSettings
+
+    during: list[bool] = []
+
+    async def fake_serve(self, *_a, **_kw) -> None:
+        during.append(made[-1][0].ctx.http.is_closed)
+
+    monkeypatch.setattr(uvicorn.Server, "serve", fake_serve)
+    await cli._serve_http(cfg, HttpSettings())
+    assert during == [False]
+    assert made[-1][0].ctx.http.is_closed
 
     # harness
     async with PluginHarness(Demo) as h:
         clients = [lp.ctx.http for lp in h._loaded]
         assert not any(c.is_closed for c in clients)
     assert all(c.is_closed for c in clients)
+
+
+async def test_lifespan_and_registry_restart_do_not_close_http_clients() -> None:
+    from any_mcp._fastmcp_adapter import build_server, in_memory_client
+    from any_mcp.registry import ToolRegistry
+
+    cfg = _config({"name": "a", "plugin": f"{__name__}:Demo"})
+    loaded = load_plugins(cfg)
+    registry = ToolRegistry(loaded, cfg.tools)
+    server = build_server(registry, cfg, aclose=loaded.aclose)
+    for _ in range(2):  # a lifespan that runs more than once
+        async with in_memory_client(server):
+            assert not loaded[0].ctx.http.is_closed
+        assert not loaded[0].ctx.http.is_closed
+    await registry.start()
+    await registry.stop()
+    await registry.start()  # a registry restart
+    assert not loaded[0].ctx.http.is_closed
+    await registry.stop()
+    assert not loaded[0].ctx.http.is_closed
+    await server.aclose()
+    assert loaded[0].ctx.http.is_closed
