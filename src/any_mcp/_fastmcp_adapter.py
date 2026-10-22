@@ -42,6 +42,17 @@ Probe results (fastmcp 4.1.3 on mcp 2.3.0, pinned by ``tests/test_adapter.py``):
   the same reach FastMCP's own ping middleware and stateful proxy use) until its exit stack
   closes; ``Connection.send_tool_list_changed()`` writes ``notifications/tools/list_changed``
   on its standalone channel. Correctness never depends on either (design D8).
+- Input required (MRTR, design D19). Probe: ``mcp_types.InputRequiredResult`` exists and
+  FastMCP 4.1.3 carries it as a tool return: ``Tool.run`` may return
+  ``fastmcp.tools.base.InputRequiredToolResult`` (a ``ToolResult`` subclass that wraps the
+  result), which flows through the middleware chain and which the wire handler unwraps into
+  the ``InputRequiredResult`` response. A retry's ``inputResponses`` and ``requestState``
+  are read from ``Context.input_responses`` / ``Context.request_state``. The SDK seals
+  ``requestState`` on the wire (per-process key) and unseals it before the tool runs, so
+  plugins see the plaintext they put in ``InputRequired.state``. No fallback to
+  ``MCPServer`` was needed. Responses reach plugins as plain JSON dicts
+  (``{"action": ..., "content": ...}`` for an elicitation). A handshake-era request cannot
+  retry, so it gets an ``isError`` result saying the tool needs a 2026-07-28 client.
 """
 
 from __future__ import annotations
@@ -60,7 +71,7 @@ from fastmcp import Client, FastMCP
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.providers import Provider
-from fastmcp.tools.base import Tool
+from fastmcp.tools.base import InputRequiredToolResult, Tool
 from fastmcp.tools.base import ToolResult as FastMCPToolResult
 from mcp.client.subscriptions import listen
 from mcp.server.caching import CacheHint
@@ -70,6 +81,9 @@ from mcp_types import (
     INVALID_PARAMS,
     CallToolRequestParams,
     CallToolResult,
+    ElicitRequest,
+    ElicitRequestFormParams,
+    InputRequiredResult,
     Request,
     ServerCapabilities,
     SubscriptionsListenRequestParams,
@@ -87,7 +101,7 @@ from any_mcp.config import AnyMcpConfig, HttpSettings
 from any_mcp.errors import UnknownTool
 from any_mcp.pipeline import call_tool
 from any_mcp.registry import ExposedTool, ToolRegistry
-from any_mcp.types import ToolResult, _thaw
+from any_mcp.types import InputRequired, ToolResult, _thaw
 
 __all__ = [
     "InMemoryClient",
@@ -113,6 +127,10 @@ class ProtocolError(Exception):
         self.code = code
         self.message = message
         super().__init__(f"{code}: {message}")
+
+
+def _dump(model: BaseModel) -> dict[str, Any]:
+    return model.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
 
 
 # -- tools -----------------------------------------------------------------------------------
@@ -145,6 +163,37 @@ def _wire_result(result: ToolResult, *, modern: bool) -> FastMCPToolResult:
     return shaped
 
 
+_NEEDS_MODERN = (
+    "this tool needs to ask for input, which requires a client that supports MCP "
+    "2026-07-28 (input required); this client negotiated an older protocol version"
+)
+
+
+def _input_required_result(needed: InputRequired) -> InputRequiredToolResult:
+    """The plugin's ``InputRequired`` as the 2026-07-28 ``InputRequiredResult``."""
+    requests = {
+        key: ElicitRequest(
+            params=ElicitRequestFormParams(
+                message=request.message, requested_schema=_thaw(request.schema)
+            )
+        )
+        for key, request in needed.requests.items()
+    }
+    return InputRequiredToolResult(
+        InputRequiredResult(input_requests=requests, request_state=needed.state)
+    )
+
+
+def _retry_fields() -> tuple[dict[str, Any], str | None]:
+    """``inputResponses`` (as plain JSON) and ``requestState`` of the current retry."""
+    try:
+        ctx = get_context()
+    except RuntimeError:
+        return {}, None
+    responses = {key: _dump(value) for key, value in (ctx.input_responses or {}).items()}
+    return responses, ctx.request_state
+
+
 class _RegistryTool(Tool):
     """One exposed registry tool; ``run`` goes through the any-mcp call pipeline."""
 
@@ -154,12 +203,24 @@ class _RegistryTool(Tool):
         return super().to_mcp_tool(**{"title": self.title, **overrides})
 
     async def run(self, arguments: dict[str, Any]) -> FastMCPToolResult:
+        modern = _modern_request()
+        responses, state = _retry_fields() if modern else ({}, None)
         try:
-            result = await call_tool(self._registry, self.name, arguments)
+            result = await call_tool(
+                self._registry,
+                self.name,
+                arguments,
+                input_responses=responses,
+                request_state=state,
+            )
         except UnknownTool as exc:
             # removed by a reload between the guard and this call
             result = ToolResult(text=str(exc), is_error=True)
-        return _wire_result(result, modern=_modern_request())
+        if result.input_required is not None:
+            if modern:
+                return _input_required_result(result.input_required)
+            return _wire_result(ToolResult(text=_NEEDS_MODERN, is_error=True), modern=False)
+        return _wire_result(result, modern=modern)
 
 
 def _to_fastmcp(registry: ToolRegistry, exposed: ExposedTool) -> _RegistryTool:
@@ -399,10 +460,6 @@ async def run_http(server: Server, settings: HttpSettings) -> None:
 
 
 # -- in-memory client ------------------------------------------------------------------------
-
-
-def _dump(model: BaseModel) -> dict[str, Any]:
-    return model.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
 
 
 class InMemoryClient:
