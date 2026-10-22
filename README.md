@@ -1,3 +1,3 @@
 # any-mcp
 
-Part of the claude-code-tatara project (python).
+any-mcp is a Python MCP server that exposes any API, or groups of APIs, as MCP tools through plugins. This is a placeholder README.
