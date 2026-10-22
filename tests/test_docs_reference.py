@@ -43,7 +43,7 @@ def config_keys(model: type[BaseModel], prefix: str = "") -> list[str]:
 
 
 def sections(text: str) -> set[str]:
-    return set(re.findall(r"^#{1,6} (.+?)\s*$", text, re.MULTILINE))
+    return {h.strip("`") for h in re.findall(r"^#{1,6} (.+?)\s*$", text, re.MULTILINE)}
 
 
 def test_every_config_key_documented():
