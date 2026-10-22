@@ -203,7 +203,8 @@ class Plugin(ABC):
         """Ask the client for more input, or return ``None`` to let the call run.
 
         Read the client's answers from ``call.input_responses`` and your own opaque state from
-        ``call.request_state``. State is not signed or encrypted by any-mcp; do that yourself.
+        ``call.request_state``. any-mcp passes the state through verbatim, so a plugin that needs tamper
+        resistance signs or encrypts the value it puts in ``InputRequired.state``.
         """
         return None
 
