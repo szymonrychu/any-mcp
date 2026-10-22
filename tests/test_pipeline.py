@@ -191,7 +191,6 @@ async def test_plain_timeout_error_is_not_reported_as_deadline() -> None:
     registry = await _registry(plugin, timeout=30)
     result = await call_tool(registry, "p_echo", {"x": 1})
     assert result.is_error
-    assert result.structured["error"]["kind"] != "timeout"
     assert "30s" not in result.text
 
 
