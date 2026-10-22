@@ -340,7 +340,7 @@ async def test_typed_return_values_serialise():
     specs = {s.name: s for s in await p.load_tools()}
     for name, n in (("m", 1), ("d", 2), ("t", 3)):
         raw = await p.call(make_call(p, specs[name]))
-        assert raw.parsed == {"n": n}
+        assert raw.value == {"n": n}
 
 
 def test_unbound_request_reload_logs_debug(caplog):
