@@ -18,21 +18,21 @@ def _is_json(raw: RawResponse) -> bool:
     return mime == "application/json" or mime.endswith("+json")
 
 
-def _describe(raw: RawResponse) -> tuple[str, Any, bool]:
-    """Return (text, structured, has_structured) before the budget is applied."""
+def _describe(raw: RawResponse) -> tuple[str, Any]:
+    """Return (text, structured) before the budget is applied."""
     if not raw.body:
-        return f"OK ({raw.status})", None, False
+        return f"OK ({raw.status})", None
     if _is_json(raw):
         try:
             value = raw.json()
         except ValueError:
-            return raw.text(), None, False
+            return raw.text(), None
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        return text, value, True
+        return text, value
     mime = raw.content_type.split(";", 1)[0].strip().lower()
     if mime.startswith("text/"):
-        return raw.text(), None, False
-    return f"{len(raw.body)} bytes of {raw.content_type}", None, False
+        return raw.text(), None
+    return f"{len(raw.body)} bytes of {raw.content_type}", None
 
 
 def shape_default(
@@ -42,7 +42,7 @@ def shape_default(
     output_schema: Mapping[str, Any] | None = None,
 ) -> ToolResult:
     """Turn a RawResponse into a ToolResult, truncating text beyond ``budget_chars``."""
-    text, structured, _ = _describe(raw)
+    text, structured = _describe(raw)
     total = len(text)
     if total <= budget_chars:
         return ToolResult(text=text, structured=structured)

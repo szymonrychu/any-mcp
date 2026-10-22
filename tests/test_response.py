@@ -52,7 +52,7 @@ def test_over_budget_truncates():
     assert r.structured is None and not r.is_error
     j = shape_default(RawResponse.from_value({"k": "y" * 100}), budget_chars=10)
     assert j.structured is None
-    assert j.text.startswith('{"k":"yyyy') and "[truncated: 10 of 109 chars]" in j.text
+    assert j.text.startswith('{"k":"yyyy') and "[truncated: 10 of 108 chars]" in j.text
 
 
 def test_over_budget_with_output_schema_is_error():
@@ -60,4 +60,4 @@ def test_over_budget_with_output_schema_is_error():
         RawResponse.from_value({"k": "y" * 100}), budget_chars=10, output_schema={"type": "object"}
     )
     assert r.is_error
-    assert "109" in r.text and "10" in r.text
+    assert "108" in r.text and "10" in r.text
