@@ -119,8 +119,11 @@ class PluginHarness:
                 stack.push_async_callback(plugin.ctx.http.aclose)
             self._server = build_server(ToolRegistry(loaded, self._config.tools), self._config)
             self._client = await stack.enter_async_context(in_memory_client(self._server))
-        except BaseException:
+        except BaseException as exc:
             await stack.aclose()
+            config_error = _find_config_error(exc)
+            if config_error is not None and config_error is not exc:
+                raise config_error from None
             raise
         self._stack = stack
         return self
@@ -158,6 +161,18 @@ class PluginHarness:
     async def reload(self) -> bool:
         """Reload every plugin; True when the tool list changed."""
         return await self._live()[0].registry.reload()
+
+
+def _find_config_error(exc: BaseException) -> ConfigError | None:
+    """The ConfigError the client wrapped on connect (via cause or context), if any."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ConfigError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
 
 
 def _build_config(data: dict[str, Any]) -> AnyMcpConfig:

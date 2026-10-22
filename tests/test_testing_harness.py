@@ -8,6 +8,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
+from any_mcp._fastmcp_adapter import ProtocolError
 from any_mcp.errors import ConfigError
 from any_mcp.plugin import Plugin
 from any_mcp.testing import HarnessResult, PluginHarness
@@ -80,16 +81,15 @@ class Changing(Plugin):
 async def test_harness_lists_tools() -> None:
     async with PluginHarness(Echo) as h:
         tools = await h.list_tools()
-    assert {t["name"] for t in tools} == {"echo_echo", "echo_boom"} or {
-        t["name"] for t in tools
-    } == {"echo", "boom"}
+    assert {t["name"] for t in tools} == {"echo_echo", "echo_boom"}
     assert all("inputSchema" in t for t in tools)
 
 
 async def test_harness_call() -> None:
     async with PluginHarness(Echo, namespace="ns") as h:
         names = {t["name"] for t in await h.list_tools()}
-        exposed = next(n for n in names if n.endswith("echo"))
+        assert names == {"ns_echo", "ns_boom"}
+        exposed = "ns_echo"
         local = await h.call("echo", {"text": "hi"})
         full = await h.call(exposed, {"text": "hi"})
         bad = await h.call("boom", {"text": "x"})
@@ -112,7 +112,8 @@ async def test_harness_mock_transport() -> None:
     ) as h:
         result = await h.call("get")
     assert seen == ["http://api.invalid/thing"]
-    assert result.structured == {"ok": True} or "true" in result.text.lower()
+    assert result.structured == {"ok": True}
+    assert result.is_error is False
 
 
 def test_harness_from_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,6 +162,42 @@ async def test_harness_config_error() -> None:
     with pytest.raises(ConfigError, match="base_url"):
         async with PluginHarness(Needy, config={}):
             pass
+
+
+class BadSetup(Plugin):
+    async def setup(self) -> None:
+        raise ConfigError("bad setup")
+
+    async def load_tools(self) -> list[ToolSpec]:
+        return []
+
+
+class BadTools(Plugin):
+    async def load_tools(self) -> list[ToolSpec]:
+        raise ConfigError("bad tools")
+
+
+async def test_harness_setup_config_error() -> None:
+    with pytest.raises(ConfigError, match="bad setup"):
+        async with PluginHarness(BadSetup):
+            pass
+
+
+async def test_harness_load_tools_config_error() -> None:
+    with pytest.raises(ConfigError, match="bad tools"):
+        async with PluginHarness(BadTools):
+            pass
+
+
+async def test_harness_tools_filter() -> None:
+    async with PluginHarness(Echo, tools=["echo"]) as h:
+        assert {t["name"] for t in await h.list_tools()} == {"echo_echo"}
+
+
+async def test_harness_call_unknown_and_ambiguous() -> None:
+    async with PluginHarness(Echo) as h:
+        with pytest.raises(ProtocolError, match="unknown tool"):
+            await h.call("missing", {})
 
 
 async def test_harness_teardown() -> None:
