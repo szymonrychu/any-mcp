@@ -1,0 +1,98 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: "1.0"
+servers:
+  - url: https://petstore.test/v1
+paths:
+  /pets:
+    parameters:
+      - name: X-Trace
+        in: header
+        schema:
+          type: string
+    get:
+      operationId: listPets
+      summary: List pets
+      description: Returns pets, newest first.
+      tags: [pets]
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of pets
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/Status"
+      responses:
+        "200":
+          description: ok
+    post:
+      operationId: createPet
+      summary: Create a pet
+      tags: [pets, write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Pet"
+      responses:
+        "201":
+          description: created
+  /pets/{petId}:
+    get:
+      summary: Fetch one pet
+      tags: [pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: ok
+    delete:
+      operationId: deletePet
+      tags: [admin]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: X-Confirm
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: gone
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+components:
+  parameters:
+    Status:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [available, sold]
+  schemas:
+    Pet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        owner:
+          $ref: "#/components/schemas/Owner"
+    Owner:
+      type: object
+      properties:
+        id:
+          type: integer

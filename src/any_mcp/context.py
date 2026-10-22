@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, ConfigDict
@@ -18,7 +19,10 @@ class NoConfig(BaseModel):
 
 @dataclass
 class PluginContext:
-    """Per-plugin runtime context. ``config`` is an instance of the plugin's ``Config`` model."""
+    """Per-plugin runtime context. ``config`` is an instance of the plugin's ``Config`` model.
+
+    ``config_dir`` is the directory of the config file (None when there is none).
+    """
 
     name: str
     namespace: str
@@ -26,6 +30,7 @@ class PluginContext:
     http: httpx.AsyncClient
     log: logging.Logger
     response_budget_chars: int
+    config_dir: Path | None = None
     _reload: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
     def _bind_reload(self, callback: Callable[[], None]) -> None:

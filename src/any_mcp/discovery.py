@@ -103,6 +103,7 @@ def load_plugins(
             ),
             log=logging.getLogger(f"any_mcp.plugin.{entry.name}"),
             response_budget_chars=config.tools.response_budget_chars,
+            config_dir=config.base_dir,
         )
         instance = cls()
         instance.ctx = ctx
