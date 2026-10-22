@@ -35,6 +35,14 @@ class ConfigError(AnyMcpError):
     """Invalid configuration or plugin reference."""
 
 
+class CallTimeout(TimeoutError, AnyMcpError):
+    """A tool call ran longer than its plugin's timeout."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        super().__init__(f"timed out after {seconds:g}s")
+
+
 class UnknownTool(AnyMcpError):
     """No tool is registered under the requested name."""
 
@@ -61,7 +69,8 @@ def error_result(exc: BaseException, *, plugin: str, expose_details: bool = Fals
         message = f"upstream returned HTTP {status}" + (f": {body}" if body else "")
         return _result("upstream", message, message, status=status)
     if isinstance(exc, TimeoutError):
-        return _result("timeout", f"{plugin} timed out", f"{plugin} timed out")
+        after = f" after {exc.seconds:g}s" if isinstance(exc, CallTimeout) else ""
+        return _result("timeout", f"{plugin} timed out{after}", f"{plugin} timed out{after}")
     message = f"{plugin} failed: {type(exc).__name__}"
     if expose_details and str(exc):
         message += f": {_one_line(str(exc))}"

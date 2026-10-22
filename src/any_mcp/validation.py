@@ -95,12 +95,17 @@ def _coerce(schema: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]
     return out if isinstance(out, dict) else arguments
 
 
+def _message(error: Any) -> str:
+    """The error message with the offending argument value masked, so it never leaks."""
+    return str(error.message).replace(repr(error.instance), "<value>")
+
+
 def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any] | None) -> dict[str, Any]:
     """Validate ``arguments`` (None means ``{}``); return them, with JSON strings coerced."""
     coerced = _coerce(schema, arguments if arguments is not None else {})
     validator = Draft202012Validator(schema)
     errors = sorted(
-        {(_json_path(e.absolute_path), e.message) for e in validator.iter_errors(coerced)}
+        {(_json_path(e.absolute_path), _message(e)) for e in validator.iter_errors(coerced)}
     )
     if errors:
         raise ToolInputError(errors)
