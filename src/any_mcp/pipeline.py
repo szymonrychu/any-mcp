@@ -33,13 +33,13 @@ async def _run(tool: ExposedTool, call: ToolCall, arguments: Mapping[str, Any]) 
     call = call.with_arguments(validated)
     call = await plugin.before_call(call)
     try:
-        async with asyncio.timeout(loaded.timeout):
+        async with asyncio.timeout(loaded.timeout) as deadline:
             raw = await plugin.call(call)
-            return await plugin.shape_response(call, raw)
     except TimeoutError as exc:
-        if isinstance(exc, CallTimeout):
-            raise
-        raise CallTimeout(loaded.timeout) from exc
+        if deadline.expired() and not isinstance(exc, CallTimeout):
+            raise CallTimeout(loaded.timeout) from exc
+        raise
+    return await plugin.shape_response(call, raw)
 
 
 async def call_tool(

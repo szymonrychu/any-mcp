@@ -34,9 +34,11 @@ class Rec(Plugin):
             self.seen.append(call.arguments)
             if self.mode == "boom":
                 raise RuntimeError(f"boom {SECRET}")
+            if self.mode == "socket":
+                raise TimeoutError("socket")
             if self.mode == "cancel":
                 raise asyncio.CancelledError
-            if self.sleep:
+            if self.sleep and self.mode != "slowshape":
                 await asyncio.sleep(self.sleep)
             return {"echo": call.arguments.get("x")}
 
@@ -64,6 +66,8 @@ class Rec(Plugin):
 
     async def shape_response(self, call: ToolCall, raw: RawResponse) -> ToolResult:
         self.events.append("shape_response")
+        if self.sleep and self.mode == "slowshape":
+            await asyncio.sleep(self.sleep)
         if self.mode == "shape":
             raise ValueError("shape boom")
         return await super().shape_response(call, raw)
@@ -179,3 +183,33 @@ async def test_call_logging_has_no_secrets(caplog: pytest.LogCaptureFixture) -> 
     await call_tool(registry, "p_echo", {"x": 1})
     last = [r.getMessage() for r in caplog.records if r.name == "any_mcp.pipeline"][-1]
     assert "req=" in last
+
+
+async def test_plain_timeout_error_is_not_reported_as_deadline() -> None:
+    plugin = Rec([])
+    plugin.mode = "socket"
+    registry = await _registry(plugin, timeout=30)
+    result = await call_tool(registry, "p_echo", {"x": 1})
+    assert result.is_error
+    assert result.structured["error"]["kind"] != "timeout"
+    assert "30s" not in result.text
+
+
+async def test_shape_response_is_outside_the_call_timeout() -> None:
+    plugin = Rec([])
+    plugin.mode = "slowshape"
+    plugin.sleep = 0.2
+    registry = await _registry(plugin, timeout=0.05)
+    result = await call_tool(registry, "p_echo", {"x": 1})
+    assert not result.is_error
+
+
+def test_validation_message_masks_only_the_leading_value() -> None:
+    from any_mcp.errors import ToolInputError
+    from any_mcp.validation import validate_arguments
+
+    schema = {"type": "object", "properties": {"x": {"type": "integer", "minimum": 10}}}
+    with pytest.raises(ToolInputError) as info:
+        validate_arguments(schema, {"x": 1})
+    assert "minimum of 10" in str(info.value.errors)
+    assert "<value>0" not in str(info.value.errors)

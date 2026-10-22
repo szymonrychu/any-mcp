@@ -97,7 +97,9 @@ def _coerce(schema: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]
 
 def _message(error: Any) -> str:
     """The error message with the offending argument value masked, so it never leaks."""
-    return str(error.message).replace(repr(error.instance), "<value>")
+    message = str(error.message)
+    shown = repr(error.instance)
+    return "<value>" + message[len(shown) :] if message.startswith(shown) else message
 
 
 def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any] | None) -> dict[str, Any]:
