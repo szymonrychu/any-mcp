@@ -328,7 +328,7 @@ class _HttpGuard:
 
     def __init__(self, app: Any, *, token: str | None, allowed_origins: Sequence[str]) -> None:
         self.app = app
-        self.token = token.encode() if token else None
+        self.token = token.encode() if token is not None else None
         self.allowed = {o.strip().rstrip("/").lower() for o in allowed_origins}
 
     def _origin_ok(self, origin: str) -> bool:
@@ -366,7 +366,7 @@ class _HttpGuard:
 
 def build_http_app(server: Server, settings: HttpSettings) -> Any:
     """The ASGI app serving ``server`` as stateless streamable HTTP at ``settings.path``."""
-    token = settings.bearer_token.get_secret_value() if settings.bearer_token else None
+    token = settings.bearer_token.get_secret_value() if settings.bearer_token is not None else None
     if token is None and not _is_loopback_host(settings.host):
         _log.warning(
             "listening on %s without server.http.bearer_token: anyone who can reach it "

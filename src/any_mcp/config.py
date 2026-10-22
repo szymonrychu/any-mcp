@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator, model_validator
 
 from any_mcp.errors import ConfigError
 
@@ -27,6 +27,13 @@ class HttpSettings(_Model):
     path: str = "/mcp"
     bearer_token: SecretStr | None = None
     allowed_origins: list[str] = Field(default_factory=list)
+
+    @field_validator("bearer_token")
+    @classmethod
+    def _token_not_empty(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value():
+            raise ValueError("bearer_token must not be empty (unset it to disable auth)")
+        return value
 
 
 class ServerSettings(_Model):

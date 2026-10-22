@@ -186,6 +186,11 @@ def test_warns_on_open_bind(caplog: pytest.LogCaptureFixture) -> None:
     assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
 
+def test_empty_bearer_token_rejected() -> None:
+    with pytest.raises(ValueError, match="bearer_token"):
+        HttpSettings(host="0.0.0.0", bearer_token="")  # type: ignore[arg-type]
+
+
 async def test_inbound_credentials_never_forwarded() -> None:
     upstream: list[httpx.Request] = []
     server = _server({}, upstream)
