@@ -1,4 +1,4 @@
-"""README and docs: every relative link resolves, the quickstart is real, the install forms are listed."""
+"""README and docs: links resolve, the quickstart is real, the install forms are listed."""
 
 from __future__ import annotations
 
