@@ -182,3 +182,13 @@ def test_mutual_recursion_stays_small_and_anchor_refs_fail() -> None:
     assert len(str(normalize_schema(schema, max_depth=8))) < 2_000_000
     with pytest.raises(SchemaError, match="#foo"):
         normalize_schema({"type": "object", "properties": {"a": {"$ref": "#foo"}}})
+
+
+def test_root_self_ref_drops_nested_defs() -> None:
+    schema = {
+        "type": "object",
+        "$defs": {"A": {"type": "string"}},
+        "properties": {"kids": {"type": "array", "items": {"$ref": "#"}}},
+    }
+    out = normalize_schema(schema, max_depth=2)
+    assert "$defs" not in repr(out)

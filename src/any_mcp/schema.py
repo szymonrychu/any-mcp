@@ -10,6 +10,7 @@ from typing import Any
 from any_mcp.errors import ConfigError
 
 _TRUNCATED: dict[str, Any] = {"type": "object", "description": "(recursive, truncated)"}
+_DEFINITION_KEYS = ("$defs", "definitions", "components")
 _NAME_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")
 
 
@@ -47,6 +48,8 @@ def _inline(node: Any, root: dict[str, Any], stack: tuple[str, ...], max_depth: 
         target = _resolve_pointer(ref, root)
         if not isinstance(target, dict):
             raise SchemaError(f"unresolvable $ref: {ref}")
+        if target is root:
+            target = {k: v for k, v in target.items() if k not in _DEFINITION_KEYS}
         resolved = _inline(target, root, (*stack, ref), max_depth)
         siblings = {k: _inline(v, root, stack, max_depth) for k, v in node.items() if k != "$ref"}
         return {**resolved, **siblings}
