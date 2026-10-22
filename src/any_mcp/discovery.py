@@ -47,9 +47,9 @@ def resolve_plugin_class(ref: str, *, python_path: Sequence[str] = ()) -> type[P
         module_name, _, attr = ref.partition(":")
         try:
             module = importlib.import_module(module_name)
-        except ImportError as exc:
+        except Exception as exc:
             raise ConfigError(
-                f"plugin {ref!r}: cannot import module {module_name!r}: {exc}"
+                f"plugin {ref!r}: cannot import module {module_name!r}: {exc!r}"
             ) from exc
         try:
             target = getattr(module, attr)

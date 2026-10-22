@@ -138,3 +138,13 @@ def test_two_instances_of_one_class() -> None:
     )
     a, b = load_plugins(cfg)
     assert a.instance is not b.instance and a.ctx is not b.ctx and a.ctx.http is not b.ctx.http
+
+
+def test_import_time_failure_is_config_error(tmp_path: Path) -> None:
+    (tmp_path / "boom_plugin_mod.py").write_text("raise RuntimeError('kaboom')\n")
+    (tmp_path / "syntax_plugin_mod.py").write_text("def (:\n")
+    for mod, text in (("boom_plugin_mod", "kaboom"), ("syntax_plugin_mod", "syntax")):
+        ref = f"{mod}:P"
+        with pytest.raises(ConfigError, match=ref) as info:
+            resolve_plugin_class(ref, python_path=[str(tmp_path)])
+        assert text in str(info.value).lower()
