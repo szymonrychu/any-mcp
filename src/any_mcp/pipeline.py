@@ -18,6 +18,8 @@ log = logging.getLogger("any_mcp.pipeline")
 
 
 def _outcome(result: ToolResult) -> str:
+    if result.input_required is not None:
+        return "input_required"
     if not result.is_error:
         return "ok"
     structured = result.structured
@@ -32,6 +34,10 @@ async def _run(tool: ExposedTool, call: ToolCall, arguments: Mapping[str, Any]) 
     validated = validate_arguments(tool.input_schema, dict(arguments))
     call = call.with_arguments(validated)
     call = await plugin.before_call(call)
+    needed = await plugin.request_input(call)
+    if needed is not None:
+        first = next(iter(needed.requests.values()))
+        return ToolResult(text=first.message, input_required=needed)
     try:
         async with asyncio.timeout(loaded.timeout) as deadline:
             raw = await plugin.call(call)
@@ -48,6 +54,8 @@ async def call_tool(
     arguments: Mapping[str, Any] | None,
     *,
     request_id: str | None = None,
+    input_responses: Mapping[str, Any] | None = None,
+    request_state: str | None = None,
 ) -> ToolResult:
     """Run one call. Raises ``UnknownTool``; only cancellation escapes otherwise."""
     tool = registry.get(name)
@@ -64,6 +72,8 @@ async def call_tool(
         arguments=args,
         spec=tool.spec,
         request_id=request_id,
+        input_responses=dict(input_responses) if input_responses else {},
+        request_state=request_state,
     )
     started = time.monotonic()
     try:

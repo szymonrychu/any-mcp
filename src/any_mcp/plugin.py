@@ -17,7 +17,7 @@ from any_mcp.context import NoConfig, PluginContext
 from any_mcp.errors import ConfigError, error_result
 from any_mcp.http import execute_binding
 from any_mcp.response import shape_default
-from any_mcp.types import RawResponse, ToolCall, ToolResult, ToolSpec
+from any_mcp.types import InputRequired, RawResponse, ToolCall, ToolResult, ToolSpec
 
 _MARK = "__any_mcp_tool__"
 
@@ -198,6 +198,14 @@ class Plugin(ABC):
     async def before_call(self, call: ToolCall) -> ToolCall:
         """Rewrite the call or raise ``Deny``."""
         return call
+
+    async def request_input(self, call: ToolCall) -> InputRequired | None:
+        """Ask the client for more input, or return ``None`` to let the call run.
+
+        Read the client's answers from ``call.input_responses`` and your own opaque state from
+        ``call.request_state``. State is not signed or encrypted by any-mcp; do that yourself.
+        """
+        return None
 
     async def call(self, call: ToolCall) -> RawResponse:
         """Run the handler, or send the HTTP binding with ``credentials()`` headers."""

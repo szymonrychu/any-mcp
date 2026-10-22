@@ -7,7 +7,7 @@ import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -165,6 +165,31 @@ class ToolSpec:
 
 
 @dataclass(frozen=True)
+class InputRequest:
+    """One thing the plugin asks the client for: an elicitation with a JSON schema."""
+
+    kind: Literal["elicitation"]
+    message: str
+    schema: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        _set(self, "schema", _freeze(self.schema))
+
+
+@dataclass(frozen=True)
+class InputRequired:
+    """Ask the client for more input; ``state`` is opaque to any-mcp and echoed on retry."""
+
+    requests: Mapping[str, InputRequest]
+    state: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.requests:
+            raise ValueError("InputRequired.requests must not be empty")
+        _set(self, "requests", MappingProxyType(dict(self.requests)))
+
+
+@dataclass(frozen=True)
 class ToolCall:
     """One invocation of a tool, as seen by plugin hooks."""
 
@@ -174,6 +199,8 @@ class ToolCall:
     arguments: Mapping[str, Any]
     spec: ToolSpec
     request_id: str
+    input_responses: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    request_state: str | None = None
 
     def with_arguments(self, arguments: Mapping[str, Any]) -> ToolCall:
         return dataclasses.replace(self, arguments=arguments)
@@ -231,3 +258,4 @@ class ToolResult:
     text: str
     structured: Any = None
     is_error: bool = False
+    input_required: InputRequired | None = None
