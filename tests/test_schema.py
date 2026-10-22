@@ -157,3 +157,28 @@ def test_validate_draft_2020_12() -> None:
         validate_arguments(schema, {"t": ["x", 1]})
     with pytest.raises(ToolInputError):
         validate_arguments(schema, {"a": 1})
+
+
+def test_validate_coerces_through_refs_and_nesting() -> None:
+    schema = {
+        "type": "object",
+        "$defs": {"O": {"type": "object"}},
+        "properties": {
+            "o": {"$ref": "#/$defs/O"},
+            "u": {"anyOf": [{"type": "array"}, {"type": "null"}]},
+            "n": {"type": "object", "properties": {"l": {"type": "array"}}},
+        },
+    }
+    out = validate_arguments(schema, {"o": '{"k":1}', "u": "[1]", "n": {"l": "[1]"}})
+    assert out == {"o": {"k": 1}, "u": [1], "n": {"l": [1]}}
+    with pytest.raises(ToolInputError):
+        validate_arguments(schema, {"o": "nope"})
+
+
+def test_mutual_recursion_stays_small_and_anchor_refs_fail() -> None:
+    props = {m: {"$ref": f"#/$defs/{m}"} for m in "ABC"}
+    defs = {n: {"type": "object", "properties": props} for n in "ABC"}
+    schema = {"$ref": "#/$defs/A", "$defs": defs}
+    assert len(str(normalize_schema(schema, max_depth=8))) < 2_000_000
+    with pytest.raises(SchemaError, match="#foo"):
+        normalize_schema({"type": "object", "properties": {"a": {"$ref": "#foo"}}})

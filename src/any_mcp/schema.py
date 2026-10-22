@@ -21,7 +21,9 @@ def _resolve_pointer(ref: str, root: dict[str, Any]) -> Any:
     if not ref.startswith("#"):
         raise SchemaError(f"unsupported external $ref: {ref}")
     node: Any = root
-    parts = [] if ref == "#" else ref[1:].split("/")[1:]
+    if ref != "#" and not ref.startswith("#/"):
+        raise SchemaError(f"unresolvable $ref: {ref}")
+    parts = [] if ref == "#" else ref[2:].split("/")
     for raw in parts:
         part = raw.replace("~1", "/").replace("~0", "~")
         if isinstance(node, dict) and part in node:
@@ -40,7 +42,7 @@ def _inline(node: Any, root: dict[str, Any], stack: tuple[str, ...], max_depth: 
         return node
     ref = node.get("$ref")
     if isinstance(ref, str):
-        if stack.count(ref) >= max_depth:
+        if len(stack) >= max_depth:
             return dict(_TRUNCATED)
         target = _resolve_pointer(ref, root)
         if not isinstance(target, dict):
