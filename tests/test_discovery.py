@@ -253,3 +253,46 @@ async def test_lifespan_and_registry_restart_do_not_close_http_clients() -> None
     assert not loaded[0].ctx.http.is_closed
     await server.aclose()
     assert loaded[0].ctx.http.is_closed
+
+
+async def test_cli_closes_http_clients_itself_when_adapter_does_not(monkeypatch) -> None:
+    """The CLI's own aclose runs even when run_http never reaches its try/finally."""
+    import asyncio
+    import os
+    import signal
+
+    from any_mcp import _fastmcp_adapter, cli
+    from any_mcp.config import HttpSettings
+
+    cfg = _config({"name": "a", "plugin": f"{__name__}:Demo"})
+    made: list = []
+    real = cli.load_plugins
+
+    def spy(config: AnyMcpConfig):
+        made.append(real(config))
+        return made[-1]
+
+    monkeypatch.setattr(cli, "load_plugins", spy)
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("no app")
+
+    monkeypatch.setattr(_fastmcp_adapter, "build_http_app", boom)
+    with pytest.raises(RuntimeError, match="no app"):
+        await cli._serve_http(cfg, HttpSettings())
+    assert made[-1][0].ctx.http.is_closed
+
+    # stdio signal path: SIGTERM tears down through the CLI's own aclose
+    started = asyncio.Event()
+
+    async def hang(self, **_kw) -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("fastmcp.FastMCP.run_stdio_async", hang)
+    serving = asyncio.ensure_future(cli._serve_stdio(cfg))
+    await started.wait()
+    assert not made[-1][0].ctx.http.is_closed
+    os.kill(os.getpid(), signal.SIGTERM)
+    assert await serving is True
+    assert made[-1][0].ctx.http.is_closed
