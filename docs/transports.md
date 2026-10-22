@@ -104,7 +104,7 @@ The following are the probe results of the FastMCP adapter, copied from the docs
   credentials come only from a plugin's `credentials()` hook and its `plugins[].config`.
 - **Loopback by default.** HTTP binds `127.0.0.1` and accepts only loopback or allow-listed
   origins. For any other host set `server.http.bearer_token` and `server.http.allowed_origins`,
-  and put TLS in front of it; any-mcp does not terminate TLS.
+  and terminate TLS at a reverse proxy; any-mcp serves plain HTTP only.
 - **Logs.** Stderr gets one line per call (request id, tool, duration, outcome), never arguments,
   headers or tokens.
 
