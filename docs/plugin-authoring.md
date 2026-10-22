@@ -457,9 +457,9 @@ How the round trip works:
 
 Things to know:
 
-- `InputRequired(requests, state=None)`: `requests` maps a name to an `InputRequest(kind, message, schema)` and must not be empty. Today the only kind is `"elicitation"`.
+- `InputRequired(requests, state=None)`: `requests` maps a name to an `InputRequest(kind, message, schema)` and must not be empty. The kind is always `"elicitation"`.
 - Each answer in `call.input_responses` looks like `{"action": "accept", "content": {...}}` (`action` can also be a decline or cancel), so check the action before trusting the content, as `_confirmed` does.
-- **2026-07-28 clients only.** Input-required results are part of the MCP 2026-07-28 revision. A client on an older protocol revision cannot answer them, so a plugin that needs a confirmation should also have a safe fallback: in the example, an unconfirmed delete simply does not delete.
+- **2026-07-28 clients only.** Input-required results are part of the MCP 2026-07-28 revision, and a client on an older revision cannot answer them. Keep the unanswered path safe: in the example, an unconfirmed delete does not delete.
 - **The state is opaque.** any-mcp passes `request_state` through verbatim and never reads it. The client can send back anything, so do not trust it: a plugin that needs tamper resistance signs or encrypts the value it puts in `InputRequired.state`. The example only uses it to check the retry belongs to the same record, and its real safety comes from checking the answer, not the state.
 
 ## Hook reference
