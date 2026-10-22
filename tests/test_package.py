@@ -45,3 +45,16 @@ def test_ci_workflow_runs_lint_and_test():
     assert "mise run test" in runs
     uses = [s["uses"] for job in wf["jobs"].values() for s in job["steps"] if "uses" in s]
     assert any(u.startswith("jdx/mise-action@") for u in uses)
+
+
+def test_python_version_pinned_to_312():
+    pinned = (ROOT / ".python-version").read_text().strip()
+    mise = tomllib.loads((ROOT / "mise.toml").read_text())
+    assert pinned == "3.12"
+    assert mise["tools"]["python"] == pinned
+
+
+def test_interpreter_is_312():
+    import sys
+
+    assert sys.version_info[:2] == (3, 12)
