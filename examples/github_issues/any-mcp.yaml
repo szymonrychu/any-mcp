@@ -1,0 +1,8 @@
+# Run with: GITHUB_TOKEN=... python -m any_mcp --config examples/github_issues/any-mcp.yaml
+python_path: ["."]
+plugins:
+  - name: github
+    plugin: github_issues:GithubIssues
+    config:
+      token: ${GITHUB_TOKEN}      # read from the environment, never written in the file
+      read_only: true             # set false to allow add_comment
