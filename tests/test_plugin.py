@@ -303,3 +303,48 @@ def _run(coro):
     import asyncio
 
     return asyncio.run(coro)
+
+
+class _Item(BaseModel):
+    n: int
+
+
+@dataclass
+class _DItem:
+    n: int
+
+
+class _TItem(TypedDict):
+    n: int
+
+
+async def test_typed_return_values_serialise():
+    class P(Plugin):
+        @tool
+        async def m(self) -> _Item:
+            """M."""
+            return _Item(n=1)
+
+        @tool
+        async def d(self) -> _DItem:
+            """D."""
+            return _DItem(n=2)
+
+        @tool
+        async def t(self) -> _TItem:
+            """T."""
+            return {"n": 3}
+
+    p = P()
+    p.ctx = make_ctx()
+    specs = {s.name: s for s in await p.load_tools()}
+    for name, n in (("m", 1), ("d", 2), ("t", 3)):
+        raw = await p.call(make_call(p, specs[name]))
+        assert raw.parsed == {"n": n}
+
+
+def test_unbound_request_reload_logs_debug(caplog):
+    ctx = make_ctx()
+    with caplog.at_level(logging.DEBUG, logger="test"):
+        ctx.request_reload()
+    assert any(r.levelno == logging.DEBUG for r in caplog.records)

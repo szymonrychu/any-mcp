@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, ClassVar, overload
 
 from pydantic import BaseModel, TypeAdapter, create_model
+from pydantic_core import to_jsonable_python
 from typing_extensions import is_typeddict
 
 from any_mcp.context import NoConfig, PluginContext
@@ -106,7 +107,7 @@ def _build_spec(instance: Plugin, fn: Callable[..., Any], opts: _ToolOptions) ->
     bound = getattr(instance, fn.__name__)
 
     async def handler(call: ToolCall) -> Any:
-        return await bound(**call.arguments)
+        return to_jsonable_python(await bound(**call.arguments))
 
     return ToolSpec(
         name=name,
