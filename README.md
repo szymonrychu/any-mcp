@@ -8,15 +8,15 @@ any-mcp is an MCP-to-API proxy: a Python MCP server that exposes any API, or a g
 
 any-mcp is a normal Python package (Python >= 3.12). Installing it puts one command on `PATH`: `any-mcp`.
 
-The index forms (`pip install any-mcp`, `pipx install any-mcp`, `uv tool install any-mcp`) work once published to an index; until then use the git forms.
+Index forms (marked "index form" below) need a package index: once published to an index; until then use the git forms.
 
 ```bash
-pip install any-mcp                                     # from a package index (once published to an index; until then use the git forms)
+pip install any-mcp                                     # from a package index (index form)
 pip install git+https://github.com/szymonrychu/any-mcp   # straight from git
 pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"   # pinned to a release tag
 pip install .                                           # from a checkout
-pipx install any-mcp                                    # isolated, on PATH (once published to an index; until then use the git forms)
-uv tool install any-mcp                                 # same, with uv (once published to an index; until then use the git forms)
+pipx install any-mcp                                    # isolated, on PATH (index form)
+uv tool install any-mcp                                 # same, with uv (index form)
 
 any-mcp --version
 ```
