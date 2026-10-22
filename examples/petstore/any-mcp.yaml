@@ -1,0 +1,6 @@
+# Run with: python -m any_mcp --config examples/petstore/any-mcp.yaml
+# Once the package is installed (pip install ./examples/petstore) use `plugin: petstore` instead.
+python_path: ["src"]   # relative to this file
+plugins:
+  - name: petstore
+    plugin: petstore_plugin:PetstorePlugin
