@@ -1,4 +1,4 @@
-"""The ``any-mcp`` command: load a config or plugins, then serve over stdio."""
+"""The ``any-mcp`` command: load a config or plugins, then serve over stdio or HTTP."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ import signal
 import sys
 from collections.abc import Sequence
 
+from pydantic import ValidationError
+
 from any_mcp import __version__
-from any_mcp.config import AnyMcpConfig, config_from_plugins, load_config
+from any_mcp.config import AnyMcpConfig, HttpSettings, config_from_plugins, load_config
 from any_mcp.discovery import load_plugins
 from any_mcp.errors import ConfigError
 from any_mcp.log import LEVELS, configure
@@ -40,9 +42,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--transport",
-        choices=["stdio"],
+        choices=["stdio", "http"],
         default=None,
         help="transport (default: from the config, else stdio)",
+    )
+    parser.add_argument("--host", default=None, help="HTTP bind host (default: server.http.host)")
+    parser.add_argument(
+        "--port", type=int, default=None, help="HTTP bind port (default: server.http.port)"
+    )
+    parser.add_argument(
+        "--path", default=None, help="HTTP endpoint path (default: server.http.path)"
     )
     parser.add_argument(
         "--log-level", choices=list(LEVELS), default=None, help="log level (default: from config)"
@@ -121,6 +130,22 @@ async def _serve_stdio(config: AnyMcpConfig) -> bool:
         waiter.cancel()
 
 
+def _http_settings(config: AnyMcpConfig, args: argparse.Namespace) -> HttpSettings:
+    overrides = {k: v for k in ("host", "port", "path") if (v := getattr(args, k)) is not None}
+    try:
+        return HttpSettings.model_validate({**config.server.http.model_dump(), **overrides})
+    except ValidationError as exc:
+        raise ConfigError(f"--host/--port/--path: {exc.errors()[0]['msg']}") from None
+
+
+async def _serve_http(config: AnyMcpConfig, settings: HttpSettings) -> None:
+    from any_mcp._fastmcp_adapter import build_server, run_http
+    from any_mcp.registry import ToolRegistry
+
+    registry = ToolRegistry(load_plugins(config), config.tools)
+    await run_http(build_server(registry, config), settings)
+
+
 def _config_error(exc: BaseException) -> ConfigError | None:
     if isinstance(exc, ConfigError):
         return exc
@@ -137,8 +162,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = _build_config(args)
         transport = args.transport or config.server.transport
-        if transport != "stdio":
-            raise ConfigError(f"server.transport: {transport!r} is not available")
+        settings = _http_settings(config, args)
         try:
             configure(args.log_level or config.server.log_level)
         except ValueError as exc:
@@ -147,6 +171,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             tools = asyncio.run(_list_tools(config))
             sys.stdout.write(json.dumps(tools, indent=2) + "\n")
             sys.stdout.flush()
+            return 0
+        if transport == "http":
+            with contextlib.suppress(KeyboardInterrupt):
+                asyncio.run(_serve_http(config, settings))
             return 0
         if asyncio.run(_serve_stdio(config)):
             sys.stdout.flush()

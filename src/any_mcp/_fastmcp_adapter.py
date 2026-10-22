@@ -48,9 +48,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
+import ipaddress
+import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastmcp import Client, FastMCP
 from fastmcp.server.dependencies import get_context
@@ -75,9 +79,11 @@ from mcp_types import (
 from mcp_types.methods import MONOLITH_REQUESTS
 from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 from pydantic import BaseModel, PrivateAttr, TypeAdapter
+from starlette.middleware import Middleware as AsgiMiddleware
+from starlette.responses import PlainTextResponse
 
 from any_mcp import __version__
-from any_mcp.config import AnyMcpConfig
+from any_mcp.config import AnyMcpConfig, HttpSettings
 from any_mcp.errors import UnknownTool
 from any_mcp.pipeline import call_tool
 from any_mcp.registry import ExposedTool, ToolRegistry
@@ -87,8 +93,10 @@ __all__ = [
     "InMemoryClient",
     "ProtocolError",
     "Server",
+    "build_http_app",
     "build_server",
     "in_memory_client",
+    "run_http",
     "run_stdio",
 ]
 
@@ -290,6 +298,104 @@ def build_server(registry: ToolRegistry, config: AnyMcpConfig) -> Server:
 async def run_stdio(server: Server) -> None:
     """Serve ``server`` over stdio until stdin closes; stdout carries only MCP messages."""
     await server._fastmcp.run_stdio_async(show_banner=False)
+
+
+# -- streamable HTTP -------------------------------------------------------------------------
+
+_log = logging.getLogger("any_mcp.http")
+_STRIPPED_HEADERS = (b"authorization", b"cookie")
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+class _HttpGuard:
+    """Pure ASGI guard in front of the MCP endpoint.
+
+    A request with an ``Origin`` that is neither loopback nor allow-listed gets 403 (the MCP
+    transport rule against DNS rebinding). With a bearer token configured, a request without
+    exactly that token gets 401. A passing request is stripped of ``Authorization`` and
+    ``Cookie`` before FastMCP sees it: inbound credentials are not forwardable by anything.
+    """
+
+    def __init__(self, app: Any, *, token: str | None, allowed_origins: Sequence[str]) -> None:
+        self.app = app
+        self.token = token.encode() if token else None
+        self.allowed = {o.strip().rstrip("/").lower() for o in allowed_origins}
+
+    def _origin_ok(self, origin: str) -> bool:
+        if origin.strip().rstrip("/").lower() in self.allowed:
+            return True
+        try:
+            return _is_loopback_host(urlsplit(origin).hostname)
+        except ValueError:
+            return False
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope["headers"])
+        origin = headers.get(b"origin")
+        if origin is not None and not self._origin_ok(origin.decode("latin-1")):
+            await PlainTextResponse("forbidden origin", status_code=403)(scope, receive, send)
+            return
+        if self.token is not None:
+            auth = headers.get(b"authorization", b"")
+            scheme, _, value = auth.partition(b" ")
+            if scheme.lower() != b"bearer" or not hmac.compare_digest(value.strip(), self.token):
+                response = PlainTextResponse(
+                    "unauthorized", status_code=401, headers={"WWW-Authenticate": "Bearer"}
+                )
+                await response(scope, receive, send)
+                return
+        scope = {
+            **scope,
+            "headers": [(k, v) for k, v in scope["headers"] if k not in _STRIPPED_HEADERS],
+        }
+        await self.app(scope, receive, send)
+
+
+def build_http_app(server: Server, settings: HttpSettings) -> Any:
+    """The ASGI app serving ``server`` as stateless streamable HTTP at ``settings.path``."""
+    token = settings.bearer_token.get_secret_value() if settings.bearer_token else None
+    if token is None and not _is_loopback_host(settings.host):
+        _log.warning(
+            "listening on %s without server.http.bearer_token: anyone who can reach it "
+            "can call every tool",
+            settings.host,
+        )
+    guard = AsgiMiddleware(_HttpGuard, token=token, allowed_origins=settings.allowed_origins)
+    return server._fastmcp.http_app(
+        path=settings.path,
+        middleware=[guard],
+        stateless_http=True,
+        host_origin_protection=False,  # the guard owns the Origin rule, loopback or not
+    )
+
+
+async def run_http(server: Server, settings: HttpSettings) -> None:
+    """Serve ``server`` over streamable HTTP on ``settings.host:port`` until cancelled."""
+    import uvicorn
+
+    app = build_http_app(server, settings)
+    config = uvicorn.Config(
+        app,
+        host=settings.host,
+        port=settings.port,
+        lifespan="on",
+        log_config=None,
+        timeout_graceful_shutdown=2,
+    )
+    await uvicorn.Server(config).serve()
 
 
 # -- in-memory client ------------------------------------------------------------------------
