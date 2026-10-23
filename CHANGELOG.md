@@ -2,8 +2,8 @@
 
 ## v0.1.0
 
-First release: any-mcp exposes any API, or a group of APIs, as MCP tools through plugins. It is
-tools only.
+First release: any-mcp exposes any API, or a group of APIs, as MCP tools through plugins. The
+server speaks the MCP tools capability.
 
 - Plugin API: a plugin is one class subclassing `Plugin`; only `load_tools` is required (or `@tool`
   methods), every other hook has a default. The core owns argument validation, error mapping, tool
@@ -21,8 +21,7 @@ tools only.
   confirm-before-delete tool under `examples/`.
 - Docs: README, concepts guide, plugin authoring, configuration, transports and testing guides.
 - Packaging: a standard pip package with the `any-mcp` console script (`any-mcp --version`).
-  Install from git, from a checkout, with pipx or with `uv tool install`; there is no PyPI
-  publishing.
+  Install from the git tag, from a checkout, with pipx or with `uv tool install`.
 
 ### Install (pinned release, as the agent onStart script runs it)
 

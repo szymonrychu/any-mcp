@@ -12,15 +12,13 @@ import tomllib
 from importlib.metadata import version as dist_version
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parent.parent
 PINNED_LINE = (
     "python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "
     '"any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"'
 )
 UV = shutil.which("uv")
-needs_uv = pytest.mark.skipif(UV is None, reason="uv is required")
+assert UV, "uv is a pinned mise tool and must be on PATH"
 
 
 def _pyproject_version() -> str:
@@ -75,7 +73,6 @@ def test_release_workflow_shape():
     assert "gh release create" in text and "CHANGELOG.md" in text
 
 
-@needs_uv
 def test_wheel_installs_and_reports_version(tmp_path):
     wheel = _build_wheel(tmp_path / "dist")
     venv = tmp_path / "venv"
@@ -85,7 +82,6 @@ def test_wheel_installs_and_reports_version(tmp_path):
     assert out.strip() == "any-mcp 0.1.0"
 
 
-@needs_uv
 def test_install_from_git_head(tmp_path):
     venv = tmp_path / "venv"
     _run([UV, "venv", "--seed", venv])
@@ -94,7 +90,6 @@ def test_install_from_git_head(tmp_path):
     assert "any-mcp" in out
 
 
-@needs_uv
 def test_uv_tool_install(tmp_path):
     wheel = _build_wheel(tmp_path / "dist")
     env = {
