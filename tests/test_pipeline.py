@@ -25,6 +25,7 @@ class Rec(Plugin):
         self.seen: list[Mapping[str, object]] = []
         self.mode = "ok"
         self.fail_on_error = False
+        self.break_credentials = False
         self.sleep = 0.0
         self.timeout_value = timeout
 
@@ -35,6 +36,7 @@ class Rec(Plugin):
             if self.mode == "boom":
                 raise RuntimeError(f"boom {SECRET}")
             if self.mode == "reflect":
+                self.credentials_broken = self.break_credentials
                 body = f'{{"error": "bad token {SECRET} and Bearer {SECRET}"}}'.encode()
                 raise UpstreamError(RawResponse(401, {}, body, "application/json"))
             if self.mode == "socket":
@@ -55,6 +57,8 @@ class Rec(Plugin):
 
     async def credentials(self, call: ToolCall):
         self.events.append("credentials")
+        if getattr(self, "credentials_broken", False):
+            raise RuntimeError("credential source down")
         return {"Authorization": SECRET}
 
     async def before_call(self, call: ToolCall) -> ToolCall:
@@ -228,3 +232,27 @@ async def test_error_body_redacts_credentials() -> None:
     assert SECRET not in result.text
     assert SECRET not in str(result.structured)
     assert "[redacted]" in result.text and "HTTP 401" in result.text
+
+
+async def test_error_body_withheld_when_credentials_unavailable() -> None:
+    plugin = Rec([])
+    plugin.mode = "reflect"
+    plugin.break_credentials = True
+    registry = await _registry(plugin)
+    result = await call_tool(registry, "p_echo", {"x": 1})
+    assert result.is_error
+    assert result.structured["error"]["status"] == 401
+    assert SECRET not in result.text
+    assert SECRET not in str(result.structured)
+
+
+async def test_error_body_withheld_when_on_error_raises() -> None:
+    plugin = Rec([])
+    plugin.mode = "reflect"
+    plugin.fail_on_error = True
+    registry = await _registry(plugin)
+    result = await call_tool(registry, "p_echo", {"x": 1})
+    assert result.is_error
+    assert result.structured["error"]["status"] == 401
+    assert SECRET not in result.text
+    assert SECRET not in str(result.structured)

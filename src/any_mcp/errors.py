@@ -77,8 +77,12 @@ def error_result(
     plugin: str,
     expose_details: bool = False,
     secrets: Iterable[str] = (),
+    withhold_body: bool = False,
 ) -> ToolResult:
-    """Map an exception to an error ToolResult. No ``secrets`` value ever appears in it."""
+    """Map an exception to an error ToolResult. No ``secrets`` value ever appears in it.
+
+    ``withhold_body`` drops the upstream body entirely, for when the secrets to redact are unknown.
+    """
     if isinstance(exc, Deny):
         kind, message = "denied", _one_line(str(exc)) or "denied"
         return _result(kind, f"denied: {message}", message)
@@ -87,7 +91,9 @@ def error_result(
         return _result("invalid_arguments", f"invalid arguments: {message}", message)
     if isinstance(exc, UpstreamError):
         status = exc.response.status
-        body = _one_line(redact(exc.response.text(), secrets)[:_BODY_LIMIT])
+        body = (
+            "" if withhold_body else _one_line(redact(exc.response.text(), secrets)[:_BODY_LIMIT])
+        )
         message = f"upstream returned HTTP {status}" + (f": {body}" if body else "")
         return _result("upstream", message, message, status=status)
     if isinstance(exc, TimeoutError):

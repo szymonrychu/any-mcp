@@ -233,9 +233,10 @@ class Plugin(ABC):
 
     async def on_error(self, call: ToolCall, exc: Exception) -> ToolResult:
         secrets: list[str] = []
+        withhold = False
         if isinstance(exc, UpstreamError):  # the only error that echoes upstream text
             try:
                 secrets = list((await self.credentials(call)).values())
             except Exception:
-                secrets = []
-        return error_result(exc, plugin=self.ctx.name, secrets=secrets)
+                withhold = True  # unknown secrets: fail closed, echo no upstream body
+        return error_result(exc, plugin=self.ctx.name, secrets=secrets, withhold_body=withhold)

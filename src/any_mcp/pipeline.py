@@ -84,7 +84,7 @@ async def call_tool(
         try:
             result = await loaded.instance.on_error(call, exc)
         except Exception:
-            result = error_result(exc, plugin=plugin_name)
+            result = error_result(exc, plugin=plugin_name, withhold_body=True)
     log.info(
         "call req=%s tool=%s duration_ms=%d outcome=%s",
         request_id,
