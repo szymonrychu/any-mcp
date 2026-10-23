@@ -1,0 +1,5 @@
+# Run with: python -m any_mcp --config examples/hello/any-mcp.yaml
+python_path: ["."]   # relative to this file, so hello.py is importable
+plugins:
+  - name: hello
+    plugin: hello:Hello

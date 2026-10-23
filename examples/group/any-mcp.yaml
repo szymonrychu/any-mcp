@@ -1,0 +1,13 @@
+# One server for a group of APIs, each under its own namespace.
+# Run with: GITHUB_TOKEN=... python -m any_mcp --config examples/group/any-mcp.yaml
+python_path: ["../hello", "../github_issues", "../petstore/src"]   # relative to this file
+plugins:
+  - name: hello
+    plugin: hello:Hello
+  - name: github_issues
+    namespace: gh
+    plugin: github_issues:GithubIssues
+    config:
+      token: ${GITHUB_TOKEN}
+  - name: petstore
+    plugin: petstore_plugin:PetstorePlugin

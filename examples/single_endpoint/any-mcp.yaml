@@ -1,0 +1,5 @@
+# Run with: python -m any_mcp --config examples/single_endpoint/any-mcp.yaml
+python_path: ["."]
+plugins:
+  - name: zippopotam
+    plugin: zippopotam:Zippopotam

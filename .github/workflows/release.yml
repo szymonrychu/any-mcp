@@ -1,0 +1,73 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+      - name: Tag must be vX.Y.Z and its commit must be on origin/main
+        run: |
+          if ! printf '%s' "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "tag ${TAG} is not vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "tagged commit ${GITHUB_SHA} is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      - name: Tag must equal v plus the pyproject version
+        run: |
+          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "${TAG}" != "v${version}" ]; then
+            echo "tag ${TAG} does not match pyproject version v${version}" >&2
+            exit 1
+          fi
+      - run: mise run install
+      - run: mise run lint
+      - run: mise run test
+      - name: Build the wheel and smoke-test it in a clean venv
+        run: |
+          uv build --wheel --out-dir dist
+          uv venv "$RUNNER_TEMP/wheel-venv"
+          uv pip install --python "$RUNNER_TEMP/wheel-venv" dist/*.whl
+          "$RUNNER_TEMP/wheel-venv/bin/any-mcp" --version
+          "$RUNNER_TEMP/wheel-venv/bin/any-mcp" --help
+      - name: Install from the git tag into another clean venv and smoke-test it
+        run: |
+          uv venv "$RUNNER_TEMP/git-venv"
+          uv pip install --python "$RUNNER_TEMP/git-venv" "any-mcp @ git+https://github.com/${REPOSITORY}@${TAG}"
+          "$RUNNER_TEMP/git-venv/bin/any-mcp" --version
+          "$RUNNER_TEMP/git-venv/bin/any-mcp" --help
+      - name: Extract the changelog section of the tag
+        run: |
+          awk -v tag="## ${TAG}" '
+            $0 == tag { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          test -s "$RUNNER_TEMP/release-notes.md"
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${TAG}" dist/*.whl \
+            --title "${TAG}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
