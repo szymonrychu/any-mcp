@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 PINNED_LINE = (
-    'python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install '
+    "python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "
     '"any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"'
 )
 UV = shutil.which("uv")
@@ -28,9 +28,11 @@ def _pyproject_version() -> str:
 
 
 def _run(cmd: list[str | Path], **kwargs) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(c) for c in cmd], capture_output=True, text=True, check=True, timeout=600, **kwargs
+    proc = subprocess.run(
+        [str(c) for c in cmd], capture_output=True, text=True, timeout=600, **kwargs
     )
+    assert proc.returncode == 0, f"{cmd} failed:\n{proc.stdout}\n{proc.stderr}"
+    return proc
 
 
 def _build_wheel(out: Path) -> Path:
@@ -59,11 +61,12 @@ def test_versions_agree():
 def test_release_workflow_shape():
     text = (ROOT / ".github/workflows/release.yml").read_text()
     assert re.search(r"push:\s*\n\s*tags:\s*\n\s*- \"?v\*\.\*\.\*\"?", text)
-    assert "pyproject.toml" in text and "GITHUB_REF_NAME" in text and 'v${version}' in text
+    assert "pyproject.toml" in text and "GITHUB_REF_NAME" in text and "v${version}" in text
     assert "mise run lint" in text and "mise run test" in text
     assert "uv build --wheel" in text
-    assert "any-mcp @ git+https://github.com/${{ github.repository }}@${{ github.ref_name }}" in text
-    assert text.count("any-mcp --version") + text.count("any-mcp\" --version") >= 2
+    git_ref = "git+https://github.com/${{ github.repository }}@${{ github.ref_name }}"
+    assert f"any-mcp @ {git_ref}" in text
+    assert text.count("any-mcp --version") + text.count('any-mcp" --version') >= 2
     assert text.count("--help") >= 2
     assert "gh release create" in text and "CHANGELOG.md" in text
 
@@ -81,8 +84,8 @@ def test_wheel_installs_and_reports_version(tmp_path):
 @needs_uv
 def test_install_from_git_head(tmp_path):
     venv = tmp_path / "venv"
-    _run([UV, "venv", venv])
-    _run([UV, "pip", "install", "--python", venv, f"any-mcp @ {_commit_head_url()}"])
+    _run([UV, "venv", "--seed", venv])
+    _run([venv / "bin" / "pip", "install", f"any-mcp @ {_commit_head_url()}"])
     out = _run([venv / "bin" / "any-mcp", "--help"]).stdout
     assert "any-mcp" in out
 
