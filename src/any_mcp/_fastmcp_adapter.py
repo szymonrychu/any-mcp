@@ -98,7 +98,7 @@ from starlette.responses import PlainTextResponse
 
 from any_mcp import __version__
 from any_mcp.config import AnyMcpConfig, HttpSettings
-from any_mcp.errors import UnknownTool
+from any_mcp.errors import ConfigError, UnknownTool
 from any_mcp.pipeline import call_tool
 from any_mcp.registry import ExposedTool, ToolRegistry
 from any_mcp.types import InputRequired, ToolResult, _thaw
@@ -449,13 +449,28 @@ class _HttpGuard:
         await self.app(scope, receive, send)
 
 
+def check_http_exposure(settings: HttpSettings) -> None:
+    """Refuse a non-loopback bind without a bearer token unless ``insecure`` is set."""
+    if (
+        settings.bearer_token is None
+        and not settings.insecure
+        and not _is_loopback_host(settings.host)
+    ):
+        raise ConfigError(
+            f"refusing to listen on {settings.host} without server.http.bearer_token: anyone "
+            "who can reach it could call every tool; set a token, bind a loopback host, or "
+            "pass --insecure (server.http.insecure) to accept the risk"
+        )
+
+
 def build_http_app(server: Server, settings: HttpSettings) -> Any:
     """The ASGI app serving ``server`` as stateless streamable HTTP at ``settings.path``."""
+    check_http_exposure(settings)
     token = settings.bearer_token.get_secret_value() if settings.bearer_token is not None else None
     if token is None and not _is_loopback_host(settings.host):
         _log.warning(
-            "listening on %s without server.http.bearer_token: anyone who can reach it "
-            "can call every tool",
+            "listening on %s without server.http.bearer_token (--insecure): anyone who can "
+            "reach it can call every tool",
             settings.host,
         )
     guard = AsgiMiddleware(_HttpGuard, token=token, allowed_origins=settings.allowed_origins)

@@ -54,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--path", default=None, help="HTTP endpoint path (default: server.http.path)"
     )
     parser.add_argument(
+        "--insecure",
+        action="store_true",
+        default=None,
+        help="allow HTTP on a non-loopback host without a bearer token (default: "
+        "server.http.insecure)",
+    )
+    parser.add_argument(
         "--log-level", choices=list(LEVELS), default=None, help="log level (default: from config)"
     )
     parser.add_argument(
@@ -135,7 +142,8 @@ async def _serve_stdio(config: AnyMcpConfig) -> bool:
 
 
 def _http_settings(config: AnyMcpConfig, args: argparse.Namespace) -> HttpSettings:
-    overrides = {k: v for k in ("host", "port", "path") if (v := getattr(args, k)) is not None}
+    flags = ("host", "port", "path", "insecure")
+    overrides = {k: v for k in flags if (v := getattr(args, k)) is not None}
     try:
         return HttpSettings.model_validate({**config.server.http.model_dump(), **overrides})
     except ValidationError as exc:
@@ -181,6 +189,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.flush()
             return 0
         if transport == "http":
+            from any_mcp._fastmcp_adapter import check_http_exposure
+
+            check_http_exposure(settings)
             with contextlib.suppress(KeyboardInterrupt):
                 asyncio.run(_serve_http(config, settings))
             return 0

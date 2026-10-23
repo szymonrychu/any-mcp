@@ -36,6 +36,7 @@ class (the part after the colon, lower-cased) or the reference itself. Pass at l
 | `--host HOST` | Overrides `server.http.host`. |
 | `--port PORT` | Overrides `server.http.port`. |
 | `--path PATH` | Overrides `server.http.path`. |
+| `--insecure` | Sets `server.http.insecure`: allow a non-loopback HTTP bind without a bearer token. |
 | `--log-level {debug,info,warning,error}` | Overrides `server.log_level`. |
 | `--list-tools` | Load the plugins, print the exposed tools as a JSON array on stdout, exit 0. |
 | `--version` | Print the version and exit. |
@@ -69,6 +70,7 @@ server:
 | `server.http.port` | integer 0-65535 | `8000` | Bind port, 0 picks a free one; `--port` overrides it. |
 | `server.http.path` | string | `/mcp` | Endpoint path; `--path` overrides it. |
 | `server.http.bearer_token` | string or null | null | When set, requests need `Authorization: Bearer <token>`. Must not be empty; unset it to disable auth. |
+| `server.http.insecure` | boolean | `false` | Allow binding a non-loopback host with no `bearer_token` (a warning is logged); otherwise that start is refused with exit 78. `--insecure` sets it. |
 | `server.http.allowed_origins` | list of strings | `[]` | `Origin` values accepted in addition to loopback origins. |
 
 Logs always go to stderr, never stdout. See [transports](transports.md) for how the HTTP keys behave.

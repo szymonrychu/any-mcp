@@ -22,6 +22,7 @@ server itself, such as Claude Code. `--transport stdio` forces it over `server.t
 | path: `server.http.path` | `--path` | `/mcp` | The one MCP endpoint. |
 | Origin: `server.http.allowed_origins` | none | `[]` | See below. |
 | bearer token: `server.http.bearer_token` | none | unset | See below. |
+| insecure: `server.http.insecure` | `--insecure` | `false` | See Security. |
 
 Flags override the file. A bad value is a config error (exit 78).
 
@@ -105,6 +106,10 @@ The following are the probe results of the FastMCP adapter, copied from the docs
 - **Loopback by default.** HTTP binds `127.0.0.1` and accepts only loopback or allow-listed
   origins. For any other host set `server.http.bearer_token` and `server.http.allowed_origins`,
   and terminate TLS at a reverse proxy; any-mcp serves plain HTTP only.
+- **Non-loopback needs a token.** Binding a non-loopback host without `server.http.bearer_token`
+  is refused at startup with exit code 78 and a message on stderr. `--insecure` (config key
+  `server.http.insecure`) overrides the refusal and keeps a warning in the log. stdio is
+  unaffected.
 - **Logs.** Stderr gets one line per call (request id, tool, duration, outcome), never arguments,
   headers or tokens.
 

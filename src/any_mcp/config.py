@@ -35,6 +35,7 @@ class HttpSettings(_Model):
     path: str = "/mcp"
     bearer_token: SecretStr | None = None
     allowed_origins: list[str] = Field(default_factory=list)
+    insecure: bool = False
 
     @field_validator("bearer_token")
     @classmethod

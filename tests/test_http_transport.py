@@ -20,6 +20,7 @@ from any_mcp._fastmcp_adapter import Server, build_http_app, build_server, run_h
 from any_mcp.config import AnyMcpConfig, HttpSettings, PluginEntry
 from any_mcp.context import NoConfig, PluginContext
 from any_mcp.discovery import LoadedPlugin
+from any_mcp.errors import ConfigError
 from any_mcp.http import make_client
 from any_mcp.plugin import Plugin
 from any_mcp.registry import ToolRegistry
@@ -172,9 +173,38 @@ async def test_bearer_token() -> None:
         await _list_and_call(url, "auto", {"Authorization": "Bearer s3cret"})
 
 
-def test_warns_on_open_bind(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING):
+def test_non_loopback_without_token_refused(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import any_mcp._fastmcp_adapter as adapter
+
+    with pytest.raises(ConfigError, match="--insecure"):
         build_http_app(_server({}), HttpSettings(host="0.0.0.0"))
+
+    async def fake_run_http(server: Server, settings: HttpSettings) -> None:
+        raise AssertionError("must not start")
+
+    monkeypatch.setattr(adapter, "run_http", fake_run_http)
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        f"python_path: ['{ROOT}']\n"
+        "server:\n  transport: http\n  http: {host: 0.0.0.0}\n"
+        "plugins:\n  - name: p\n    plugin: 'tests.fixtures.stdio_plugin:StdioPlugin'\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["--config", str(path)]) == 78
+    err = capsys.readouterr().err
+    assert "bearer_token" in err and "--insecure" in err
+    assert cli.main(["--config", str(path), "--host", "::"]) == 78
+
+
+def test_insecure_flag_allows_with_warning(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import any_mcp._fastmcp_adapter as adapter
+
+    with caplog.at_level(logging.WARNING):
+        build_http_app(_server({}), HttpSettings(host="0.0.0.0", insecure=True))
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
     assert "bearer_token" in warnings[0].getMessage()
@@ -184,6 +214,24 @@ def test_warns_on_open_bind(caplog: pytest.LogCaptureFixture) -> None:
         build_http_app(_server({}), HttpSettings(host="127.0.0.1"))
         build_http_app(_server({}), HttpSettings(host="0.0.0.0", bearer_token="t"))  # type: ignore[arg-type]
     assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    seen: list[HttpSettings] = []
+
+    async def fake_run_http(server: Server, settings: HttpSettings) -> None:
+        seen.append(settings)
+
+    monkeypatch.setattr(adapter, "run_http", fake_run_http)
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        f"python_path: ['{ROOT}']\n"
+        "server:\n  transport: http\n  http: {host: 0.0.0.0}\n"
+        "plugins:\n  - name: p\n    plugin: 'tests.fixtures.stdio_plugin:StdioPlugin'\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["--config", str(path), "--insecure"]) == 0
+    assert seen[-1].insecure is True
+    path.write_text(path.read_text().replace("{host: 0.0.0.0}", "{host: 0.0.0.0, insecure: true}"))
+    assert cli.main(["--config", str(path)]) == 0
 
 
 def test_empty_bearer_token_rejected() -> None:
