@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from any_mcp.errors import ConfigError
+from any_mcp.http import read_capped
 from any_mcp.plugin import Plugin
 from any_mcp.schema import normalize_schema
 from any_mcp.types import HttpBinding, ToolCall, ToolSpec
@@ -39,6 +40,7 @@ class OpenAPIConfig(BaseModel):
     tags: list[str] = Field(default_factory=list)
     headers: dict[str, str] = Field(default_factory=dict)
     bearer_token: str | None = None
+    spec_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
 
 
 def _is_url(value: str) -> bool:
@@ -97,17 +99,28 @@ class OpenAPIPlugin(Plugin):
         """The spec text and the location it came from (a URL or a file path)."""
         spec = self.cfg.spec
         if _is_url(spec):
+            cap = self.cfg.spec_max_bytes
             try:
-                response = await self.ctx.http.get(spec)
-                response.raise_for_status()
+                async with self.ctx.http.stream("GET", spec) as response:
+                    response.raise_for_status()
+                    body = await read_capped(response, cap + 1)
+                    encoding = response.encoding or "utf-8"
             except httpx.HTTPError as exc:
                 raise ConfigError(f"openapi spec {spec}: cannot fetch: {exc}") from exc
-            return response.text, spec
+            if len(body) > cap:
+                raise ConfigError(f"openapi spec {spec}: larger than spec_max_bytes ({cap})")
+            return body.decode(encoding, errors="replace"), spec
         path = Path(spec)
         if not path.is_absolute():
             path = (self.ctx.config_dir or Path.cwd()) / path
         try:
-            return path.read_text(encoding="utf-8"), str(path)
+            with path.open("rb") as handle:
+                data = handle.read(self.cfg.spec_max_bytes + 1)
+            if len(data) > self.cfg.spec_max_bytes:
+                raise ConfigError(
+                    f"openapi spec {path}: larger than spec_max_bytes ({self.cfg.spec_max_bytes})"
+                )
+            return data.decode("utf-8"), str(path)
         except (OSError, UnicodeDecodeError) as exc:
             raise ConfigError(f"openapi spec {path}: cannot read: {exc}") from exc
 

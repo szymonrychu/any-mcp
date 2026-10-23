@@ -329,3 +329,29 @@ async def test_unknown_arguments_rejected() -> None:
     ) as harness:
         result = await harness.call("listPets", {"limit": 2, "bogus": 1})
     assert result.is_error
+
+
+async def test_spec_download_capped() -> None:
+    sent = 0
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            nonlocal sent
+            for _ in range(10_000):
+                sent += 1000
+                yield b"#" * 1000
+
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, stream=Stream()))
+    plugin = make_plugin(
+        transport=transport, spec="https://x.test/spec.yaml", spec_max_bytes=3000, allow=["*"]
+    )
+    with pytest.raises(ConfigError, match="spec_max_bytes"):
+        await plugin.load_tools()
+    assert sent <= 5000
+
+
+async def test_spec_file_capped(tmp_path: Path) -> None:
+    (tmp_path / "big.yaml").write_text("#" * 500)
+    plugin = make_plugin(config_dir=tmp_path, spec="big.yaml", spec_max_bytes=100, allow=["*"])
+    with pytest.raises(ConfigError, match="spec_max_bytes"):
+        await plugin.load_tools()

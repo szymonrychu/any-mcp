@@ -214,7 +214,13 @@ class Plugin(ABC):
         if spec.handler is not None:
             return RawResponse.from_value(await spec.handler(call))
         if spec.http is not None:
-            return await execute_binding(self.ctx.http, call, headers=await self.credentials(call))
+            return await execute_binding(
+                self.ctx.http,
+                call,
+                headers=await self.credentials(call),
+                # a character is at most 4 UTF-8 bytes, so this keeps every budgeted char
+                max_bytes=self.ctx.response_budget_chars * 4,
+            )
         raise ConfigError(f"tool {spec.name!r} has neither a handler nor an http binding")
 
     async def shape_response(self, call: ToolCall, raw: RawResponse) -> ToolResult:

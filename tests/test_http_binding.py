@@ -121,3 +121,26 @@ async def test_make_client_defaults():
     assert client._transport is transport
     assert client.timeout.read == 30.0
     assert str(client.base_url).startswith("https://api.test")
+
+
+async def test_upstream_body_streamed_with_cap():
+    sent = 0
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            nonlocal sent
+            for _ in range(10_000):
+                sent += 1000
+                yield b"x" * 1000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/plain"}, stream=Stream())
+
+    client = make_client("https://api.test", transport=httpx.MockTransport(handler))
+    raw = await execute_binding(client, make_call(HttpBinding("GET", "/big"), {}), max_bytes=5000)
+    assert len(raw.body) == 5000
+    assert sent <= 5000 + 1000
+    from any_mcp.response import shape_default
+
+    result = shape_default(raw, budget_chars=100)
+    assert "[truncated: 100 of 5000 chars]" in result.text

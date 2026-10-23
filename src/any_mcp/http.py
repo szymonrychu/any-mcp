@@ -103,12 +103,27 @@ def _url(client: httpx.AsyncClient, binding: HttpBinding, path: str) -> str:
     return path
 
 
+async def read_capped(response: httpx.Response, max_bytes: int | None) -> bytes:
+    """Read the body of a streamed response, stopping once ``max_bytes`` are collected."""
+    if max_bytes is None:
+        return await response.aread()
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in response.aiter_bytes():
+        chunks.append(chunk)
+        size += len(chunk)
+        if size >= max_bytes:
+            break
+    return b"".join(chunks)[:max_bytes]
+
+
 async def execute_binding(
     client: httpx.AsyncClient,
     call: ToolCall,
     *,
     headers: Mapping[str, str] | None = None,
     timeout: float | None = None,
+    max_bytes: int | None = None,
 ) -> RawResponse:
     """Send the request described by ``call.spec.http`` and return the response."""
     binding = call.spec.http
@@ -141,11 +156,15 @@ async def execute_binding(
         timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT,
         **kwargs,
     )
-    response = await client.send(request)
+    response = await client.send(request, stream=True)
+    try:
+        content = await read_capped(response, max_bytes)
+    finally:
+        await response.aclose()
     raw = RawResponse(
         response.status_code,
         dict(response.headers),
-        response.content,
+        content,
         response.headers.get("content-type", ""),
     )
     if raw.status >= 400:
