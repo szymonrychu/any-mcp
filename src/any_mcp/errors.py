@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from any_mcp.types import RawResponse, ToolResult
 
 _BODY_LIMIT = 500
@@ -55,8 +57,28 @@ def _describe_input_errors(errors: list[tuple[str, str]]) -> str:
     return "; ".join(f"{path}: {message}" for path, message in errors)
 
 
-def error_result(exc: BaseException, *, plugin: str, expose_details: bool = False) -> ToolResult:
-    """Map an exception to an error ToolResult. No header value ever appears in it."""
+def redact(text: str, secrets: Iterable[str]) -> str:
+    """Replace every occurrence of each secret (and its last word, e.g. a bearer token)."""
+    needles: set[str] = set()
+    for secret in secrets:
+        if secret:
+            needles.add(secret)
+            tail = secret.split()[-1]
+            if len(tail) >= 4:
+                needles.add(tail)
+    for needle in sorted(needles, key=len, reverse=True):
+        text = text.replace(needle, "[redacted]")
+    return text
+
+
+def error_result(
+    exc: BaseException,
+    *,
+    plugin: str,
+    expose_details: bool = False,
+    secrets: Iterable[str] = (),
+) -> ToolResult:
+    """Map an exception to an error ToolResult. No ``secrets`` value ever appears in it."""
     if isinstance(exc, Deny):
         kind, message = "denied", _one_line(str(exc)) or "denied"
         return _result(kind, f"denied: {message}", message)
@@ -65,7 +87,7 @@ def error_result(exc: BaseException, *, plugin: str, expose_details: bool = Fals
         return _result("invalid_arguments", f"invalid arguments: {message}", message)
     if isinstance(exc, UpstreamError):
         status = exc.response.status
-        body = _one_line(exc.response.text()[:_BODY_LIMIT])
+        body = _one_line(redact(exc.response.text(), secrets)[:_BODY_LIMIT])
         message = f"upstream returned HTTP {status}" + (f": {body}" if body else "")
         return _result("upstream", message, message, status=status)
     if isinstance(exc, TimeoutError):
@@ -73,7 +95,7 @@ def error_result(exc: BaseException, *, plugin: str, expose_details: bool = Fals
         return _result("timeout", f"{plugin} timed out{after}", f"{plugin} timed out{after}")
     message = f"{plugin} failed: {type(exc).__name__}"
     if expose_details and str(exc):
-        message += f": {_one_line(str(exc))}"
+        message += f": {redact(_one_line(str(exc)), secrets)}"
     return _result("internal", message, message)
 
 

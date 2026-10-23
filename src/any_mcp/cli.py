@@ -97,8 +97,8 @@ async def _list_tools(config: AnyMcpConfig) -> list[dict[str, object]]:
 
     loaded = load_plugins(config)
     registry = ToolRegistry(loaded, config.tools)
-    await registry.start()
     try:
+        await registry.start()
         return [
             {"name": t.name, "description": t.spec.description, "inputSchema": t.listed_schema}
             for t in registry.tools()

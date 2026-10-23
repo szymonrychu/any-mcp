@@ -41,9 +41,16 @@ class LoadedPlugins(list[LoadedPlugin]):
 
     async def aclose(self) -> None:
         """Close every per-plugin ``httpx.AsyncClient``; safe to call again."""
+        first: Exception | None = None
         for plugin in self:
-            if not plugin.ctx.http.is_closed:
+            if plugin.ctx.http.is_closed:
+                continue
+            try:
                 await plugin.ctx.http.aclose()
+            except Exception as exc:
+                first = first or exc
+        if first is not None:
+            raise first
 
 
 def _check(target: object, ref: str) -> type[Plugin]:

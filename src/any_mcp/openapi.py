@@ -47,6 +47,11 @@ def _is_url(value: str) -> bool:
     return value.startswith(("http://", "https://"))
 
 
+def _without_query(text: str) -> str:
+    """Drop ``?query`` and ``#fragment`` from every URL in the text (they may carry secrets)."""
+    return re.sub(r"(https?://[^\s?#'\"]*)[?#][^\s'\"]*", r"\1", text)
+
+
 def _origin(url: str) -> tuple[str, str, int | None]:
     parts = urlsplit(url)
     port = parts.port or _DEFAULT_PORTS.get(parts.scheme)
@@ -106,10 +111,14 @@ class OpenAPIPlugin(Plugin):
                     body = await read_capped(response, cap + 1)
                     encoding = response.encoding or "utf-8"
             except httpx.HTTPError as exc:
-                raise ConfigError(f"openapi spec {spec}: cannot fetch: {exc}") from exc
+                raise ConfigError(
+                    f"openapi spec {_without_query(spec)}: cannot fetch: {_without_query(str(exc))}"
+                ) from exc
             if len(body) > cap:
-                raise ConfigError(f"openapi spec {spec}: larger than spec_max_bytes ({cap})")
-            return body.decode(encoding, errors="replace"), spec
+                raise ConfigError(
+                    f"openapi spec {_without_query(spec)}: larger than spec_max_bytes ({cap})"
+                )
+            return body.decode(encoding, errors="replace"), _without_query(spec)
         path = Path(spec)
         if not path.is_absolute():
             path = (self.ctx.config_dir or Path.cwd()) / path

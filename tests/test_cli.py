@@ -258,3 +258,25 @@ def test_sigterm_teardown(stdio: Stdio, tmp_path: Path) -> None:
     assert stdio.wait(5) == 0
     assert (tmp_path / "mark").read_text() == "teardown\n"
     assert stdio.proc.stdout.read() == ""
+
+
+async def test_list_tools_closes_clients_on_setup_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from any_mcp import cli
+    from any_mcp.config import AnyMcpConfig
+
+    built = []
+    real = cli.load_plugins
+
+    def spy(config):
+        loaded = real(config)
+        built.append(loaded)
+        return loaded
+
+    monkeypatch.setattr(cli, "load_plugins", spy)
+    monkeypatch.syspath_prepend(str(ROOT))
+    config = AnyMcpConfig.model_validate(
+        {"plugins": [{"name": "p", "plugin": "tests.fixtures.failing_setup_plugin:FailingSetup"}]}
+    )
+    with pytest.raises(BaseException):  # noqa: B017, PT011
+        await cli._list_tools(config)
+    assert built and all(lp.ctx.http.is_closed for lp in built[0])

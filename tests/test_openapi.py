@@ -355,3 +355,11 @@ async def test_spec_file_capped(tmp_path: Path) -> None:
     plugin = make_plugin(config_dir=tmp_path, spec="big.yaml", spec_max_bytes=100, allow=["*"])
     with pytest.raises(ConfigError, match="spec_max_bytes"):
         await plugin.load_tools()
+
+
+async def test_spec_fetch_error_strips_query_string() -> None:
+    from any_mcp.openapi import _without_query
+
+    url = "https://h.example/spec.json?api_key=SECRETQ#frag"
+    assert "SECRETQ" not in _without_query(f"openapi spec {url}: cannot fetch: 500 for url '{url}'")
+    assert _without_query("https://h.example/spec.json") == "https://h.example/spec.json"

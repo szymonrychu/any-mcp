@@ -14,7 +14,7 @@ from pydantic_core import to_jsonable_python
 from typing_extensions import is_typeddict
 
 from any_mcp.context import NoConfig, PluginContext
-from any_mcp.errors import ConfigError, error_result
+from any_mcp.errors import ConfigError, UpstreamError, error_result
 from any_mcp.http import execute_binding
 from any_mcp.response import shape_default
 from any_mcp.types import InputRequired, RawResponse, ToolCall, ToolResult, ToolSpec
@@ -232,4 +232,10 @@ class Plugin(ABC):
         )
 
     async def on_error(self, call: ToolCall, exc: Exception) -> ToolResult:
-        return error_result(exc, plugin=self.ctx.name)
+        secrets: list[str] = []
+        if isinstance(exc, UpstreamError):  # the only error that echoes upstream text
+            try:
+                secrets = list((await self.credentials(call)).values())
+            except Exception:
+                secrets = []
+        return error_result(exc, plugin=self.ctx.name, secrets=secrets)

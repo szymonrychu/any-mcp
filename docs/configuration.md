@@ -89,6 +89,8 @@ Exposed names are `<namespace>_<tool>`, sorted, and the same for every connectio
 
 ## `plugins`
 
+A config file is trusted like code. Plugin references (`module:Class`, entries added through `python_path`, and entry-point names) import operator-supplied code into the server process, which runs it with the server's rights. Only point `plugins[].plugin` and `python_path` at code you trust, and keep the config file writable by the operator alone.
+
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `python_path` | list of strings | `[]` | Directories added to the import path for `module:Class` plugins; relative entries resolve against the config file. |

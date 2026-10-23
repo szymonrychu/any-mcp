@@ -99,3 +99,11 @@ def test_tool_list_changes_carries_adapter_probe_notes():
     ):
         assert needle in doc, needle
         assert needle in " ".join((_fastmcp_adapter.__doc__ or "").split()), needle
+
+
+def test_plugin_trust_model_documented():
+    text = " ".join(CONFIGURATION.split()).lower()
+    assert "import" in text and "operator-supplied code" in text
+    assert "trusted like code" in text
+    for ref in ("module:class", "python_path", "entry point"):
+        assert ref in text

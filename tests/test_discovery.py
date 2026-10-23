@@ -296,3 +296,28 @@ async def test_cli_closes_http_clients_itself_when_adapter_does_not(monkeypatch)
     os.kill(os.getpid(), signal.SIGTERM)
     assert await serving is True
     assert made[-1][0].ctx.http.is_closed
+
+
+async def test_aclose_isolates_client_errors() -> None:
+    cfg = _config(
+        {"name": "a", "plugin": f"{__name__}:Demo"},
+        {"name": "b", "plugin": f"{__name__}:Demo"},
+        {"name": "c", "plugin": f"{__name__}:Demo"},
+    )
+    loaded = load_plugins(cfg)
+    real = loaded[1].ctx.http.aclose
+    first, second = RuntimeError("first"), RuntimeError("second")
+
+    async def boom_a() -> None:
+        raise first
+
+    async def boom_b() -> None:
+        await real()
+        raise second
+
+    object.__setattr__(loaded[0].ctx.http, "aclose", boom_a)
+    object.__setattr__(loaded[1].ctx.http, "aclose", boom_b)
+    with pytest.raises(RuntimeError) as info:
+        await loaded.aclose()
+    assert info.value is first
+    assert loaded[1].ctx.http.is_closed and loaded[2].ctx.http.is_closed

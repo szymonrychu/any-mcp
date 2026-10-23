@@ -10,7 +10,7 @@ import pytest
 from any_mcp.config import PluginEntry, ToolSettings
 from any_mcp.context import NoConfig, PluginContext
 from any_mcp.discovery import LoadedPlugin
-from any_mcp.errors import Deny, UnknownTool
+from any_mcp.errors import Deny, UnknownTool, UpstreamError
 from any_mcp.pipeline import call_tool
 from any_mcp.plugin import Plugin
 from any_mcp.registry import ToolRegistry
@@ -34,6 +34,9 @@ class Rec(Plugin):
             self.seen.append(call.arguments)
             if self.mode == "boom":
                 raise RuntimeError(f"boom {SECRET}")
+            if self.mode == "reflect":
+                body = f'{{"error": "bad token {SECRET} and Bearer {SECRET}"}}'.encode()
+                raise UpstreamError(RawResponse(401, {}, body, "application/json"))
             if self.mode == "socket":
                 raise TimeoutError("socket")
             if self.mode == "cancel":
@@ -212,3 +215,16 @@ def test_validation_message_masks_only_the_leading_value() -> None:
         validate_arguments(schema, {"x": 1})
     assert "minimum of 10" in str(info.value.errors)
     assert "<value>0" not in str(info.value.errors)
+
+
+async def test_error_body_redacts_credentials() -> None:
+    plugin = Rec([])
+    plugin.mode = "reflect"
+    registry = await _registry(plugin)
+    result = await call_tool(registry, "p_echo", {"x": 1})
+    assert result.is_error
+    assert result.structured["error"]["kind"] == "upstream"
+    assert result.structured["error"]["status"] == 401
+    assert SECRET not in result.text
+    assert SECRET not in str(result.structured)
+    assert "[redacted]" in result.text and "HTTP 401" in result.text
