@@ -88,9 +88,14 @@ def _body(binding: HttpBinding, arguments: Mapping[str, Any], consumed: set[str]
     return {k: arguments[k] for k in mode if k in arguments}
 
 
+_ABSOLUTE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
+
 def _url(client: httpx.AsyncClient, binding: HttpBinding, path: str) -> str:
-    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path):
-        return path
+    if _ABSOLUTE.match(path):
+        raise ConfigError(
+            f"absolute url path {path!r} refused: credentials must not leave the configured host"
+        )
     if binding.base_url:
         return binding.base_url.rstrip("/") + "/" + path.lstrip("/")
     if not str(client.base_url):

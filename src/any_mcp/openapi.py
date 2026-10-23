@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 import yaml
@@ -25,6 +25,8 @@ _PARAM_LOCATIONS = ("path", "query", "header")
 _NON_ALNUM = re.compile(r"[^A-Za-z0-9]+")
 _SERVER_VAR = re.compile(r"\{([^{}]+)\}")
 _JSON = "application/json"
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 _NO_FILTER = 'set allow or tags in the openapi plugin config (allow: ["*"] exposes every operation)'
 
 
@@ -41,6 +43,12 @@ class OpenAPIConfig(BaseModel):
 
 def _is_url(value: str) -> bool:
     return value.startswith(("http://", "https://"))
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    parts = urlsplit(url)
+    port = parts.port or _DEFAULT_PORTS.get(parts.scheme)
+    return parts.scheme, (parts.hostname or "").lower(), port
 
 
 def _resolve(node: Any, doc: dict[str, Any]) -> Any:
@@ -131,13 +139,16 @@ class OpenAPIPlugin(Plugin):
                     lambda m: str((variables.get(m.group(1)) or {}).get("default", m.group(0))),
                     url,
                 )
-                if _is_url(url):
-                    return url
                 if _is_url(source):
-                    return urljoin(source, url)
+                    resolved = urljoin(source, url)
+                    if _origin(resolved) == _origin(source):
+                        return resolved
+                elif _is_url(url):
+                    return url
         raise ConfigError(
-            f"openapi spec {source}: no absolute server url; set base_url in the openapi plugin "
-            "config"
+            f"openapi spec {source}: no usable server url (a spec fetched by url may only name "
+            "its own origin; a local spec needs an http(s) url); set base_url in the openapi "
+            "plugin config"
         )
 
     def _selected(self, name: str, tags: Sequence[str]) -> bool:
@@ -169,6 +180,12 @@ class OpenAPIPlugin(Plugin):
                     selected.append((method, path, operation, shared))
         if not selected:
             return specs
+        for _, path, _, _ in selected:
+            if _ABSOLUTE_PATH.match(path):
+                raise ConfigError(
+                    f"openapi spec {source}: absolute url path {path!r} refused; paths must be "
+                    "relative to the configured host"
+                )
         base_url = self._base_url(doc, source)
         for method, path, operation, shared in selected:
             specs.append(self._tool(doc, method, path, operation, shared, base_url))
@@ -221,7 +238,11 @@ class OpenAPIPlugin(Plugin):
                 if request_body.get("required"):
                     required.append("body")
 
-        input_schema: dict[str, Any] = {"type": "object", "properties": properties}
+        input_schema: dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
+            "additionalProperties": False,
+        }
         if required:
             input_schema["required"] = required
         return ToolSpec(

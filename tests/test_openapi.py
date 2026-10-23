@@ -68,7 +68,9 @@ async def test_loads_specs_from_file_and_url() -> None:
         return httpx.Response(200, text=PETSTORE)
 
     plugin = make_plugin(
-        transport=httpx.MockTransport(handler), spec="https://specs.test/p.yaml", allow=["listPets"]
+        transport=httpx.MockTransport(handler), spec="https://specs.test/p.yaml",
+        allow=["listPets"],
+        base_url="https://petstore.test/v1",
     )
     specs = await plugin.load_tools()
     assert [s.name for s in specs] == ["listPets"]
@@ -257,3 +259,68 @@ async def test_relative_spec_resolves_against_config_file(tmp_path: Path) -> Non
     async with PluginHarness.from_config(tmp_path / "any-mcp.yaml") as harness:
         names = [t["name"] for t in await harness.list_tools()]
     assert names == ["pets_listPets"]
+
+
+async def test_absolute_url_path_rejected() -> None:
+    doc = {
+        "openapi": "3.0.0",
+        "info": {"title": "x", "version": "1"},
+        "paths": {"https://evil.test/steal": {"get": {"operationId": "steal"}}},
+    }
+    plugin = make_plugin(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=doc)),
+        spec="https://s.test/s.json",
+        allow=["*"],
+        base_url="https://s.test",
+    )
+    with pytest.raises(ConfigError, match="absolute"):
+        await plugin.load_tools()
+
+
+async def test_cross_origin_servers_refused_without_base_url() -> None:
+    doc = {
+        "openapi": "3.0.0",
+        "info": {"title": "x", "version": "1"},
+        "servers": [{"url": "https://evil.test/v1"}],
+        "paths": {"/a": {"get": {"operationId": "a"}}},
+    }
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json=doc))
+    plugin = make_plugin(transport=transport, spec="https://s.test/s.json", allow=["*"])
+    with pytest.raises(ConfigError, match="base_url"):
+        await plugin.load_tools()
+    ok = make_plugin(
+        transport=transport, spec="https://s.test/s.json", allow=["*"], base_url="https://s.test"
+    )
+    assert len(await ok.load_tools()) == 1
+    doc["servers"] = [{"url": "https://s.test/v2"}]
+    same = make_plugin(transport=transport, spec="https://s.test/s.json", allow=["*"])
+    [spec] = await same.load_tools()
+    assert spec.http is not None and spec.http.base_url == "https://s.test/v2"
+
+
+async def test_local_spec_non_http_server_refused(tmp_path: Path) -> None:
+    (tmp_path / "s.json").write_text(
+        json.dumps(
+            {
+                "openapi": "3.0.0",
+                "info": {"title": "x", "version": "1"},
+                "servers": [{"url": "file:///etc"}],
+                "paths": {"/a": {"get": {"operationId": "a"}}},
+            }
+        )
+    )
+    with pytest.raises(ConfigError, match="base_url"):
+        await make_plugin(spec="s.json", allow=["*"], config_dir=tmp_path).load_tools()
+
+
+async def test_unknown_arguments_rejected() -> None:
+    tools = await load(spec="petstore.yaml", allow=["listPets"])
+    assert tools["listPets"].input_schema["additionalProperties"] is False
+    async with PluginHarness(
+        OpenAPIPlugin,
+        config={"spec": str(FIXTURES / "petstore.yaml"), "allow": ["listPets"]},
+        name="pets",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[])),
+    ) as harness:
+        result = await harness.call("listPets", {"limit": 2, "bogus": 1})
+    assert result.is_error

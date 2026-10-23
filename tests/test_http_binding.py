@@ -95,8 +95,8 @@ async def test_base_url_resolution():
     bare = make_client("", transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     with pytest.raises(ConfigError):
         await execute_binding(bare, make_call(HttpBinding("GET", "/p"), {}))
-    ok = await execute_binding(bare, make_call(HttpBinding("GET", "http://abs.test/p"), {}))
-    assert ok.status == 200
+    with pytest.raises(ConfigError, match="absolute"):
+        await execute_binding(bare, make_call(HttpBinding("GET", "http://abs.test/p"), {}))
 
 
 async def test_status_handling():
