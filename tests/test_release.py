@@ -43,8 +43,12 @@ def _build_wheel(out: Path) -> Path:
 
 
 def _commit_head_url() -> str:
-    """git+file URL of HEAD; the install tests need the work committed."""
-    return f"git+file://{ROOT}@HEAD"
+    """git+file URL pinned to the HEAD commit sha (pip and uv reject a literal @HEAD ref).
+
+    The install tests need the work committed.
+    """
+    sha = _run(["git", "rev-parse", "HEAD"], cwd=ROOT).stdout.strip()
+    return f"git+file://{ROOT}@{sha}"
 
 
 def test_versions_agree():
