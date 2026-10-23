@@ -34,8 +34,8 @@ check. List origins as written by the browser, for example `https://app.example.
 **Bearer token.** When `server.http.bearer_token` is set, a request without exactly
 `Authorization: Bearer <token>` gets 401 with `WWW-Authenticate: Bearer`. The comparison is
 constant time. Read the token from the environment with `${ANY_MCP_TOKEN}`. Binding a non-loopback
-host without a token logs a stderr warning, because anyone who can reach the port can call every
-tool.
+host without a token is refused at startup with exit code 78, because anyone who can reach the
+port could call every tool; `--insecure` overrides the refusal and logs a warning instead.
 
 The server keeps no session: no `Mcp-Session-Id`, and any instance can answer any request.
 
