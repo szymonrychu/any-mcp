@@ -68,7 +68,8 @@ async def test_loads_specs_from_file_and_url() -> None:
         return httpx.Response(200, text=PETSTORE)
 
     plugin = make_plugin(
-        transport=httpx.MockTransport(handler), spec="https://specs.test/p.yaml",
+        transport=httpx.MockTransport(handler),
+        spec="https://specs.test/p.yaml",
         allow=["listPets"],
         base_url="https://petstore.test/v1",
     )
@@ -168,7 +169,9 @@ async def test_ref_handling() -> None:
         },
     }
     transport = httpx.MockTransport(lambda r: httpx.Response(200, json=external))
-    plugin = make_plugin(transport=transport, spec="https://s.test/s.json", allow=["*"])
+    plugin = make_plugin(
+        transport=transport, spec="https://s.test/s.json", allow=["*"], base_url="https://s.test"
+    )
     with pytest.raises(ConfigError, match="other.yaml#/Thing"):
         await plugin.load_tools()
 
@@ -176,7 +179,9 @@ async def test_ref_handling() -> None:
 async def test_swagger2_rejected() -> None:
     doc = {"swagger": "2.0", "info": {"title": "old", "version": "1"}, "paths": {}}
     transport = httpx.MockTransport(lambda r: httpx.Response(200, json=doc))
-    plugin = make_plugin(transport=transport, spec="https://s.test/s.json", allow=["*"])
+    plugin = make_plugin(
+        transport=transport, spec="https://s.test/s.json", allow=["*"], base_url="https://s.test"
+    )
     with pytest.raises(ConfigError, match="only OpenAPI 3"):
         await plugin.load_tools()
 
