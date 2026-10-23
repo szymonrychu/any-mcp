@@ -358,8 +358,35 @@ async def test_spec_file_capped(tmp_path: Path) -> None:
 
 
 async def test_spec_fetch_error_strips_query_string() -> None:
-    from any_mcp.openapi import _without_query
-
     url = "https://h.example/spec.json?api_key=SECRETQ#frag"
-    assert "SECRETQ" not in _without_query(f"openapi spec {url}: cannot fetch: 500 for url '{url}'")
-    assert _without_query("https://h.example/spec.json") == "https://h.example/spec.json"
+    plugin = make_plugin(
+        transport=httpx.MockTransport(lambda r: httpx.Response(500)), spec=url, allow=["*"]
+    )
+    with pytest.raises(ConfigError, match="cannot fetch") as info:
+        await plugin.load_tools()
+    assert "SECRETQ" not in str(info.value)
+    assert "https://h.example/spec.json" in str(info.value)
+
+
+async def test_spec_too_large_error_strips_query_string() -> None:
+    url = "https://h.example/spec.json?api_key=SECRETQ"
+    plugin = make_plugin(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, text="#" * 500)),
+        spec=url,
+        spec_max_bytes=100,
+        allow=["*"],
+    )
+    with pytest.raises(ConfigError, match="spec_max_bytes") as info:
+        await plugin.load_tools()
+    assert "SECRETQ" not in str(info.value)
+
+
+async def test_spec_source_strips_query_string() -> None:
+    url = "https://h.example/spec.yaml?api_key=SECRETQ"
+    plugin = make_plugin(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, text=PETSTORE)),
+        spec=url,
+        allow=["*"],
+    )
+    _, source = await plugin._read_spec()
+    assert source == "https://h.example/spec.yaml"
