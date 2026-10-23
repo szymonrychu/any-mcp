@@ -104,7 +104,7 @@ def _url(client: httpx.AsyncClient, binding: HttpBinding, path: str) -> str:
 
 
 async def read_capped(response: httpx.Response, max_bytes: int | None) -> bytes:
-    """Read the body of a streamed response, stopping once ``max_bytes`` are collected."""
+    """Read a streamed body, collecting no more than ``max_bytes`` bytes (``None`` reads it all)."""
     if max_bytes is None:
         return await response.aread()
     chunks: list[bytes] = []

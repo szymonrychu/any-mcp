@@ -287,6 +287,7 @@ class PetstorePlugin(OpenAPIPlugin):
 | `tags` | expose the operations that carry one of these OpenAPI tags |
 | `headers` | static headers sent with every request |
 | `bearer_token` | sent as `Authorization: Bearer ...` |
+| `spec_max_bytes` | largest spec document accepted, default 10 MiB; a bigger one fails with a config error |
 
 Set `allow` or `tags`: an OpenAPI plugin with no filter refuses to start, because exposing a whole API by accident is rarely what you want. Curate the tools; an agent does better with a dozen well-chosen tools than with hundreds.
 

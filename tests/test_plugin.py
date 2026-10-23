@@ -362,3 +362,23 @@ async def test_tool_returning_bytes_is_binary():
     spec = (await _tools(p))[0]
     raw = await p.call(make_call(p, spec))
     assert raw.body == b"\xff\xfe"
+
+
+async def test_four_byte_body_cut_by_cap_is_marked_truncated():
+    body = "\U0001f600" * 200  # 4 bytes per char, twice the 100 char budget in bytes
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/plain"}, content=body.encode())
+
+    class P(Plugin):
+        async def load_tools(self):
+            return []
+
+    plugin = P()
+    plugin.ctx = make_ctx(
+        http=make_client("https://api.test", transport=httpx.MockTransport(handler)), budget=100
+    )
+    spec = ToolSpec(name="t", description="t", input_schema={}, http=HttpBinding("GET", "/x"))
+    raw = await plugin.call(make_call(plugin, spec))
+    result = await plugin.shape_response(make_call(plugin, spec), raw)
+    assert "[truncated:" in result.text

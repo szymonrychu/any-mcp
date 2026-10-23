@@ -218,8 +218,9 @@ class Plugin(ABC):
                 self.ctx.http,
                 call,
                 headers=await self.credentials(call),
-                # a character is at most 4 UTF-8 bytes, so this keeps every budgeted char
-                max_bytes=self.ctx.response_budget_chars * 4,
+                # one byte past 4 per budgeted char: a cut body then always decodes to more
+                # chars than the budget, so shape_response marks it as truncated
+                max_bytes=self.ctx.response_budget_chars * 4 + 1,
             )
         raise ConfigError(f"tool {spec.name!r} has neither a handler nor an http binding")
 
