@@ -63,14 +63,37 @@ def test_versions_agree():
 def test_release_workflow_shape():
     text = (ROOT / ".github/workflows/release.yml").read_text()
     assert re.search(r"push:\s*\n\s*tags:\s*\n\s*- \"?v\*\.\*\.\*\"?", text)
-    assert "pyproject.toml" in text and "GITHUB_REF_NAME" in text and "v${version}" in text
+    assert "pyproject.toml" in text and "${TAG}" in text and "v${version}" in text
     assert "mise run lint" in text and "mise run test" in text
     assert "uv build --wheel" in text
-    git_ref = "git+https://github.com/${{ github.repository }}@${{ github.ref_name }}"
-    assert f"any-mcp @ {git_ref}" in text
+    assert "any-mcp @ git+https://github.com/${REPOSITORY}@${TAG}" in text
     assert text.count("any-mcp --version") + text.count('any-mcp" --version') >= 2
     assert text.count("--help") >= 2
     assert "gh release create" in text and "CHANGELOG.md" in text
+
+
+def _workflow(name: str) -> dict:
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
+
+
+def test_ci_permissions_read_only():
+    assert _workflow("ci.yml")["permissions"] == {"contents": "read"}
+
+
+def test_release_workflow_hardened():
+    wf = _workflow("release.yml")
+    assert wf["permissions"] == {"contents": "read"}
+    job = wf["jobs"]["release"]
+    assert job["permissions"] == {"contents": "write"}
+    text = (ROOT / ".github/workflows/release.yml").read_text()
+    run_blocks = "\n".join(s.get("run", "") for s in job["steps"])
+    assert "${{" not in run_blocks, "no expression interpolation inside run:"
+    assert job["env"]["TAG"] == "${{ github.ref_name }}"
+    assert "^v[0-9]+\\.[0-9]+\\.[0-9]+$" in text
+    assert "merge-base --is-ancestor" in text and "origin/main" in text
+    assert '"${TAG}"' in text or '"$TAG"' in text
 
 
 def test_wheel_installs_and_reports_version(tmp_path):
