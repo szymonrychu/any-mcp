@@ -13,7 +13,7 @@ Index forms (marked "index form" below) need a package index: once published to 
 ```bash
 pip install any-mcp                                     # from a package index (index form)
 pip install git+https://github.com/szymonrychu/any-mcp   # straight from git
-pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"   # pinned to a release tag
+pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"   # pinned to a release tag
 pip install .                                           # from a checkout
 pipx install any-mcp                                    # isolated, on PATH (index form)
 uv tool install any-mcp                                 # same, with uv (index form)
@@ -26,7 +26,7 @@ any-mcp --version
 An agent image or an onStart hook can install any-mcp into its own virtual environment with plain `venv` and `pip` (no uv needed), pinned to the release tag:
 
 ```bash
-python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"
+python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"
 ```
 
 The console script is then `/opt/any-mcp/bin/any-mcp`. The hook can write the config file with the standard library only, as JSON: JSON is valid YAML, so the config file may be JSON (see [Configuration](docs/configuration.md#file-format)).
@@ -70,6 +70,43 @@ claude mcp add --scope user hello -- any-mcp --config /abs/path/any-mcp.yaml
 ```
 
 The agent now sees one tool, `hello_greet`. The tool name is `<namespace>_<tool>`; see [Tool names](docs/concepts.md#tool-names).
+
+## Orchestrator plugin
+
+`any_mcp.orchestrator:OrchestratorPlugin` is built into any-mcp (like `any_mcp.openapi:OpenAPIPlugin`). It is the one plugin through which agents call the agent-orchestrator agent API `/agent/v1`. It does no network I/O at start; every tool is a thin HTTP call that returns the server JSON, and a non-2xx answer becomes a tool error carrying the server's `error.code` and message (`not_leader`, `stale_epoch`, `no_peers`, `alone`, `static_cluster`, `out_of_range`, `leader_would_leave`, `invalid_path`, ...).
+
+Config fields (extra keys are refused): `base_url`, `token`, `cluster` (cluster id), `agent` (pod name), `slug`, `max_replicas` (default 1), `static` (default false), `hive` (default false), `auto_compact_pct` (default null). Every request carries `Authorization: Bearer <token>` and `X-Orch-Cluster: <cluster>`; the token is never logged or echoed in a result or error.
+
+| Tool | Route |
+|------|-------|
+| `orchestrator_me` | `GET /agent/v1/me` |
+| `orchestrator_leadership_handover(reason, epoch, to?)` | `POST /agent/v1/leadership/handover` |
+| `orchestrator_lock_claim(paths)` | `POST /agent/v1/locks/claim` |
+| `orchestrator_lock_release(paths)` | `POST /agent/v1/locks/release` |
+| `orchestrator_lock_list` | `GET /agent/v1/locks` |
+| `orchestrator_lock_reassign(path, to?)` | `POST /agent/v1/locks/reassign` (`to` null discards the lock) |
+| `orchestrator_scale(replicas)` | `POST /agent/v1/scale` |
+| `orchestrator_init_scripts_get` | `GET /agent/v1/init-scripts` |
+| `orchestrator_init_scripts_edit(scripts)` | `PUT /agent/v1/init-scripts` |
+
+The plugin always lists all nine tools. Which an agent sees is decided by the `allow` list of the entry the orchestrator renders (`scale` only on a scalable cluster, the hive tools only in a hive). With `hive` true the hive tool descriptions start with "You are agent <agent>, one of up to <max_replicas> agents in hive <slug>; the workdir is shared."; with `auto_compact_pct` set the handover description advises handing over once context passes `auto_compact_pct - 15` percent.
+
+```yaml
+plugins:
+  - name: orchestrator
+    plugin: any_mcp.orchestrator:OrchestratorPlugin
+    allow: [me, leadership_handover, lock_*, init_scripts_*]
+    config:
+      base_url: http://orchestrator-agents:8081
+      token: ${ORCH_AGENT_TOKEN}
+      cluster: c-1
+      agent: agent-0
+      slug: my-hive
+      max_replicas: 3
+      hive: true
+```
+
+`${ORCH_AGENT_TOKEN}` is expanded by any-mcp from its environment, so the token is never written to the config file. The token is scoped to one cluster.
 
 ## Examples
 

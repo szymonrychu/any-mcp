@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.2.0
+
+Adds the built-in `OrchestratorPlugin` (plugin name `orchestrator`, `any_mcp.orchestrator`): agents
+call the agent-orchestrator agent API (`/agent/v1`) as MCP tools.
+
+- Nine tools: `orchestrator_me`, `orchestrator_leadership_handover`, `orchestrator_lock_claim`,
+  `orchestrator_lock_release`, `orchestrator_lock_list`, `orchestrator_lock_reassign`,
+  `orchestrator_scale` (leader only, range 1..max_replicas), `orchestrator_init_scripts_get` and
+  `orchestrator_init_scripts_edit`.
+- Config (all required unless noted): `base_url`, `token`, `cluster`, `agent`, `slug`;
+  optional `max_replicas` (default 1), `static`, `hive` (hive wording in tool descriptions) and
+  `auto_compact_pct` (adds handover-instead-of-compacting advice to the handover tool).
+- Credentials: the per-cluster token is sent as `Authorization: Bearer` with an `X-Orch-Cluster`
+  header on every call, and is redacted from error output. Orchestrator error codes surface as
+  tool errors with the HTTP status.
+
 ## v0.1.0
 
 First release: any-mcp exposes any API, or a group of APIs, as MCP tools through plugins. The
@@ -26,7 +42,7 @@ server speaks the MCP tools capability.
 ### Install (pinned release, as the agent onStart script runs it)
 
 ```bash
-python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"
+python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"
 ```
 
 The console script is `/opt/any-mcp/bin/any-mcp`. The config file may be JSON (JSON is valid
