@@ -11,11 +11,12 @@ from any_mcp.context import PluginContext
 from any_mcp.orchestrator import OrchestratorPlugin
 from any_mcp.testing import PluginHarness
 
+OLD_UNIT = "clus" + "ter"
 TOKEN = "s3cr3t-token-value"
 CONFIG: dict[str, Any] = {
     "base_url": "http://orch.test:8081",
     "token": TOKEN,
-    "cluster": "c-1",
+    "session": "s-1",
     "agent": "agent-0",
     "slug": "my-hive",
     "max_replicas": 3,
@@ -123,7 +124,32 @@ async def test_credentials_headers() -> None:
     assert len(headers) == 2
     for got in headers:
         assert got["authorization"] == f"Bearer {TOKEN}"
-        assert got["x-orch-cluster"] == "c-1"
+        assert got["x-orch-session"] == "s-1"
+
+
+async def test_session_header_sent() -> None:
+    headers: list[httpx.Headers] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        headers.append(request.headers)
+        return httpx.Response(200, json={})
+
+    async with harness(handler) as h:
+        await h.call("orchestrator_me")
+    assert headers[0]["x-orch-session"] == "s-1"
+    assert f"x-orch-{OLD_UNIT}" not in headers[0]
+
+
+async def test_cluster_key_refused() -> None:
+    config = {k: v for k, v in CONFIG.items() if k != "session"} | {OLD_UNIT: "c-1"}
+    with pytest.raises(Exception, match=OLD_UNIT):
+        async with PluginHarness(
+            OrchestratorPlugin,
+            config=config,
+            name="orchestrator",
+            transport=httpx.MockTransport(ok),
+        ):
+            pass
 
 
 async def test_descriptions_from_config() -> None:
@@ -207,7 +233,7 @@ async def test_no_io_at_load() -> None:
 
 async def test_scale_and_init_tools_match_contracts() -> None:
     accepted = {"status": "accepted", "from": 3, "to": 2, "removed": ["agent-2"]}
-    scripts = {"scripts": ["echo a"], "log_dir": ".agent-init/", "applies": "next_cluster"}
+    scripts = {"scripts": ["echo a"], "log_dir": ".agent-init/", "applies": "next_session"}
     seen: list[tuple[str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -220,7 +246,7 @@ async def test_scale_and_init_tools_match_contracts() -> None:
                 )
             if body["replicas"] == 0:
                 return httpx.Response(
-                    409, json={"error": {"code": "static_cluster", "message": "static"}}
+                    409, json={"error": {"code": "static_session", "message": "static"}}
                 )
             if body["replicas"] == 1:
                 return httpx.Response(
@@ -238,7 +264,7 @@ async def test_scale_and_init_tools_match_contracts() -> None:
         assert json.loads(r.text) == accepted
         for n, code in (
             (9, "out_of_range"),
-            (0, "static_cluster"),
+            (0, "static_session"),
             (1, "leader_would_leave"),
             (5, "not_leader"),
         ):

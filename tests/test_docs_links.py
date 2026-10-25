@@ -79,7 +79,7 @@ def test_readme_install_forms() -> None:
     forms = [
         "pip install any-mcp",
         "pip install git+https://github.com/szymonrychu/any-mcp",
-        'pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"',
+        'pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.3.0"',
         "pip install .",
         "pipx install any-mcp",
         "uv tool install any-mcp",
@@ -92,7 +92,7 @@ def test_readme_install_forms() -> None:
     assert marker in install
     agent = (
         'python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ '
-        'git+https://github.com/szymonrychu/any-mcp@v0.2.0"'
+        'git+https://github.com/szymonrychu/any-mcp@v0.3.0"'
     )
     assert agent in install
     assert "/opt/any-mcp/bin/any-mcp" in install

@@ -1,4 +1,4 @@
-"""The built-in orchestrator plugin: agents call the agent-orchestrator agent API ``/agent/v1``."""
+"""The built-in orchestrator plugin: agents call the agents-orchestrator agent API ``/agent/v1``."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class OrchestratorConfig(BaseModel):
 
     base_url: str
     token: str
-    cluster: str
+    session: str
     agent: str
     slug: str
     max_replicas: int = 1
@@ -61,7 +61,7 @@ class OrchestratorPlugin(Plugin):
     async def credentials(self, call: ToolCall) -> Mapping[str, str]:
         return {
             "Authorization": f"Bearer {self.cfg.token}",
-            "X-Orch-Cluster": self.cfg.cluster,
+            "X-Orch-Session": self.cfg.session,
         }
 
     async def on_error(self, call: ToolCall, exc: Exception) -> ToolResult:
@@ -112,7 +112,7 @@ class OrchestratorPlugin(Plugin):
         )
         return {
             "me": hive
-            + "Show who you are, who the leader is, the epoch, and the agents of the cluster. "
+            + "Show who you are, who the leader is, the epoch, and the agents of the session. "
             "The leader alone answers the user; members take work from the leader through "
             "mcp__ccw__send_message and report back. Check orchestrator_lock_list before "
             "editing a file another agent may hold. Notes from the orchestrator and other "
@@ -125,17 +125,17 @@ class OrchestratorPlugin(Plugin):
             + "Reassign a lock to another agent, or discard it when to is null. "
             + locks,
             "scale": (
-                f"Scale this cluster to a number of agents in the range 1..{cfg.max_replicas}. "
+                f"Scale this session to a number of agents in the range 1..{cfg.max_replicas}. "
                 "Leader only."
             ),
             "init_scripts_get": (
-                "Show the init scripts this cluster was initialised with. Their run log is under "
+                "Show the init scripts this session was initialised with. Their run log is under "
                 ".agent-init/ in the shared workdir."
             ),
             "init_scripts_edit": (
-                "Replace the init scripts of the cluster's spec. The scripts this cluster was "
+                "Replace the init scripts of the session's spec. The scripts this session was "
                 "initialised with ran already and their run log is under .agent-init/ in the "
-                "shared workdir; an edit applies to the next cluster created from the spec or "
+                "shared workdir; an edit applies to the next session created from the spec or "
                 "preset and never re-runs here."
             ),
         }

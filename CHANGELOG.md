@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.0
+
+Breaking: the orchestrator plugin follows the agent-orchestrator rename of clusters to sessions.
+Requires agents-orchestrator with the session agent API.
+
+- Config key `cluster` is now `session`.
+- The request header `X-Orch-Cluster` is now `X-Orch-Session`.
+- Error codes `static_cluster` and `next_cluster` are now `static_session` and `next_session`.
+
 ## v0.2.0
 
 Adds the built-in `OrchestratorPlugin` (plugin name `orchestrator`, `any_mcp.orchestrator`): agents
@@ -42,7 +51,7 @@ server speaks the MCP tools capability.
 ### Install (pinned release, as the agent onStart script runs it)
 
 ```bash
-python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"
+python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"
 ```
 
 The console script is `/opt/any-mcp/bin/any-mcp`. The config file may be JSON (JSON is valid
