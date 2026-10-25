@@ -1,6 +1,6 @@
 [project]
 name = "any-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Expose any API, or groups of APIs, as MCP tools through plugins"
 readme = "README.md"
 license = "MIT"

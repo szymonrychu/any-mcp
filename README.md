@@ -13,7 +13,7 @@ Index forms (marked "index form" below) need a package index: once published to 
 ```bash
 pip install any-mcp                                     # from a package index (index form)
 pip install git+https://github.com/szymonrychu/any-mcp   # straight from git
-pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"   # pinned to a release tag
+pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.3.0"   # pinned to a release tag
 pip install .                                           # from a checkout
 pipx install any-mcp                                    # isolated, on PATH (index form)
 uv tool install any-mcp                                 # same, with uv (index form)
@@ -26,7 +26,7 @@ any-mcp --version
 An agent image or an onStart hook can install any-mcp into its own virtual environment with plain `venv` and `pip` (no uv needed), pinned to the release tag:
 
 ```bash
-python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.2.0"
+python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.3.0"
 ```
 
 The console script is then `/opt/any-mcp/bin/any-mcp`. The hook can write the config file with the standard library only, as JSON: JSON is valid YAML, so the config file may be JSON (see [Configuration](docs/configuration.md#file-format)).
