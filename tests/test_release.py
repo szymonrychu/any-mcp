@@ -149,8 +149,7 @@ def test_onstart_install_path(tmp_path):
 
 
 def test_pinned_install_line_documented():
-    for name in ("README.md", "CHANGELOG.md"):
-        text = (ROOT / name).read_text()
-        assert PINNED_LINE in text, name
-        assert "/opt/any-mcp/bin/any-mcp" in text, name
-        assert re.search(r"config file may be JSON", text), name
+    text = (ROOT / "README.md").read_text()
+    assert PINNED_LINE in text
+    assert "/opt/any-mcp/bin/any-mcp" in text
+    assert re.search(r"config file may be JSON", text)

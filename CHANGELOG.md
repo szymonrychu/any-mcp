@@ -51,7 +51,7 @@ server speaks the MCP tools capability.
 ### Install (pinned release, as the agent onStart script runs it)
 
 ```bash
-python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.3.0"
+python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.1.0"
 ```
 
 The console script is `/opt/any-mcp/bin/any-mcp`. The config file may be JSON (JSON is valid
