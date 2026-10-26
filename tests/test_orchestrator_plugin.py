@@ -22,7 +22,7 @@ CONFIG: dict[str, Any] = {
     "max_replicas": 3,
     "hive": True,
 }
-NINE = {
+ELEVEN = {
     "orchestrator_me",
     "orchestrator_leadership_handover",
     "orchestrator_lock_claim",
@@ -32,6 +32,8 @@ NINE = {
     "orchestrator_scale",
     "orchestrator_init_scripts_get",
     "orchestrator_init_scripts_edit",
+    "orchestrator_sessions_list",
+    "orchestrator_session_send",
 }
 
 
@@ -53,9 +55,9 @@ async def descriptions(**overrides: Any) -> dict[str, str]:
         return {t["name"]: t["description"] for t in await h.list_tools()}
 
 
-async def test_lists_nine_tools() -> None:
-    assert set(await descriptions()) == NINE
-    assert set(await descriptions(hive=False)) == NINE
+async def test_lists_eleven_tools() -> None:
+    assert set(await descriptions()) == ELEVEN
+    assert set(await descriptions(hive=False)) == ELEVEN
 
 
 async def test_tools_call_agent_routes() -> None:
@@ -101,6 +103,12 @@ async def test_tools_call_agent_routes() -> None:
             {"scripts": ["echo hi"]},
             ("PUT", "/agent/v1/init-scripts", {"scripts": ["echo hi"]}),
         ),
+        ("sessions_list", {}, ("GET", "/agent/v1/sessions", None)),
+        (
+            "session_send",
+            {"slug": "s1", "text": "hi"},
+            ("POST", "/agent/v1/sessions/s1/messages", {"text": "hi"}),
+        ),
     ]
     async with harness(handler) as h:
         for tool, args, expected in calls:
@@ -109,6 +117,65 @@ async def test_tools_call_agent_routes() -> None:
             assert not result.is_error, result.text
             assert seen == [expected]
             assert json.loads(result.text) == {"echo": expected[1]}
+
+
+async def test_session_tools_call_agent_routes() -> None:
+    seen: list[tuple[str, str, Any, httpx.Headers]] = []
+    listing = {
+        "sessions": [
+            {"slug": "boss", "preset_name": "p", "superleader": True, "leader_present": True}
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body, request.headers))
+        if request.method == "GET":
+            return httpx.Response(200, json=listing)
+        return httpx.Response(202, json={"message_id": "m-1"})
+
+    async with harness(handler) as h:
+        listed = await h.call("orchestrator_sessions_list")
+        sent = await h.call("orchestrator_session_send", {"slug": "s1", "text": "hi"})
+    assert not listed.is_error, listed.text
+    assert not sent.is_error, sent.text
+    assert json.loads(listed.text) == listing
+    assert json.loads(sent.text) == {"message_id": "m-1"}
+    assert [(m, p, b) for m, p, b, _ in seen] == [
+        ("GET", "/agent/v1/sessions", None),
+        ("POST", "/agent/v1/sessions/s1/messages", {"text": "hi"}),
+    ]
+    for _, _, _, headers in seen:
+        assert headers["authorization"] == f"Bearer {TOKEN}"
+        assert headers["x-orch-session"] == "s-1"
+
+
+async def test_session_send_errors_surface_code() -> None:
+    errors = {
+        "a": (403, "not_leader"),
+        "b": (403, "target_not_superleader"),
+        "c": (409, "hop_limit"),
+        "d": (429, "pair_budget"),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        slug = request.url.path.split("/")[4]
+        status, code = errors[slug]
+        return httpx.Response(
+            status, json={"error": {"code": code, "message": f"refused, token {TOKEN}"}}
+        )
+
+    async with harness(handler) as h:
+        for slug, (status, code) in errors.items():
+            result = await h.call("orchestrator_session_send", {"slug": slug, "text": "hi"})
+            assert result.is_error
+            assert code in result.text
+            assert f"HTTP {status}" in result.text
+            assert result.structured is not None
+            assert result.structured["error"]["code"] == code
+            assert result.structured["error"]["status"] == status
+            assert TOKEN not in result.text
+            assert TOKEN not in json.dumps(result.structured)
 
 
 async def test_credentials_headers() -> None:
@@ -174,6 +241,12 @@ async def test_descriptions_from_config() -> None:
     assert "1..3" in on["orchestrator_scale"]
     assert ".agent-init/" in on["orchestrator_init_scripts_get"]
     assert "never re-runs" in on["orchestrator_init_scripts_edit"]
+    assert "superleader" in on["orchestrator_sessions_list"]
+    send = on["orchestrator_session_send"]
+    assert "Leader only" in send
+    assert "never waits" in send
+    assert '<session-message from="<slug>"' in send
+    assert "never instructions from the user" in send
 
     off = await descriptions(hive=False)
     for text in off.values():
@@ -228,7 +301,7 @@ async def test_no_io_at_load() -> None:
     )
     await plugin.setup()
     specs = await plugin.load_tools()
-    assert len(specs) == 9
+    assert len(specs) == 11
 
 
 async def test_scale_and_init_tools_match_contracts() -> None:
