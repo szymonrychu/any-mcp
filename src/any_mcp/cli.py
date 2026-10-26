@@ -1,4 +1,7 @@
-"""The ``any-mcp`` command: load a config or plugins, then serve over stdio or HTTP."""
+"""The ``any-mcp`` command: load a config or plugins, then serve over stdio or HTTP.
+
+``any-mcp plugins install`` installs plugin sources ahead of the first start.
+"""
 
 from __future__ import annotations
 
@@ -10,14 +13,23 @@ import os
 import signal
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from pydantic import ValidationError
 
 from any_mcp import __version__
-from any_mcp.config import AnyMcpConfig, HttpSettings, config_from_plugins, load_config
+from any_mcp import install as installer
+from any_mcp.config import (
+    AnyMcpConfig,
+    HttpSettings,
+    config_from_plugins,
+    load_config,
+    load_sources,
+)
 from any_mcp.discovery import load_plugins
 from any_mcp.errors import ConfigError
 from any_mcp.log import LEVELS, configure
+from any_mcp.sources import parse_source
 
 EXIT_CONFIG = 78
 ENV_CONFIG = "ANY_MCP_CONFIG"
@@ -69,6 +81,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="print the exposed tools as a JSON array and exit",
     )
     parser.add_argument("--version", action="version", version=f"any-mcp {__version__}")
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
+    plugins = commands.add_parser("plugins", help="manage plugin sources")
+    actions = plugins.add_subparsers(dest="action", metavar="ACTION", required=True)
+    install = actions.add_parser(
+        "install",
+        help="install plugin sources into this environment, refreshing branch and tag refs",
+        description="Install each SOURCE (relative paths resolve against the working directory) "
+        "and every plugins[].source of --config (relative to the config file).",
+    )
+    install.add_argument(
+        "--config",
+        dest="install_config",
+        metavar="PATH",
+        default=None,
+        help="config file whose plugins[].source entries to install",
+    )
+    install.add_argument("sources", metavar="SOURCE", nargs="*", help="a plugin source")
     return parser
 
 
@@ -173,8 +202,28 @@ def _config_error(exc: BaseException) -> ConfigError | None:
     return None
 
 
+def _install_sources(args: argparse.Namespace) -> None:
+    """Install every given source and every source of ``--config``, one stdout line each."""
+    if not args.sources and not args.install_config:
+        raise ConfigError("plugins install: pass a SOURCE or --config")
+    texts = [(text, Path.cwd()) for text in args.sources]
+    if args.install_config:
+        found, base_dir = load_sources(args.install_config)
+        texts += [(text, base_dir) for text in found]
+    jobs = [(parse_source(text), base_dir) for text, base_dir in texts]
+    for source, base_dir in jobs:
+        done = installer.install(source, base_dir=base_dir, refresh=True)
+        print(f"{source.raw} {done.distribution} {done.sha or 'local'}", flush=True)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "plugins":
+        try:
+            _install_sources(args)
+        except ConfigError as exc:
+            return _fail(str(exc))
+        return 0
     try:
         config = _build_config(args)
         transport = args.transport or config.server.transport

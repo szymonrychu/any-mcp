@@ -1,23 +1,31 @@
-"""Plugin discovery: resolve ``module:Class`` or entry-point references and build instances."""
+"""Plugin discovery: resolve ``module:Class``, entry-point or source references, build instances.
+
+A ``source`` entry is installed through ``any_mcp.install`` when the manifest does not list it
+yet (no refresh), then the chosen ``any_mcp.plugins`` entry point of its distribution is loaded.
+"""
 
 from __future__ import annotations
 
 import importlib
 import logging
+import site
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from any_mcp import install as installer
 from any_mcp.config import AnyMcpConfig, PluginEntry
 from any_mcp.context import PluginContext
 from any_mcp.errors import ConfigError
 from any_mcp.http import make_client
-from any_mcp.install import ENTRY_POINT_GROUP
+from any_mcp.install import ENTRY_POINT_GROUP, Installed
 from any_mcp.plugin import Plugin
+from any_mcp.sources import parse_source
 
 
 @dataclass
@@ -90,6 +98,62 @@ def resolve_plugin_class(ref: str, *, python_path: Sequence[str] = ()) -> type[P
     return _check(target, ref)
 
 
+def _activate_installs() -> None:
+    """Process the ``.pth`` files of this environment's site directories again.
+
+    The interpreter reads them only at startup; an editable install (a local source) adds its
+    path through one, so a source installed by this process needs it to become importable.
+    Paths already on ``sys.path`` are skipped.
+    """
+    for directory in site.getsitepackages():
+        site.addsitedir(directory)
+    importlib.invalidate_caches()
+
+
+def _source_error(found: Installed, reason: str) -> ConfigError:
+    return ConfigError(f"plugin source '{found.source.raw}': {reason}")
+
+
+def _entry_point_name(entry: PluginEntry, found: Installed) -> str:
+    names = ", ".join(sorted(found.entry_points))
+    if entry.plugin is not None:
+        if entry.plugin not in found.entry_points:
+            raise _source_error(
+                found,
+                f"distribution '{found.distribution}' has no '{ENTRY_POINT_GROUP}' entry point "
+                f"'{entry.plugin}'; it declares: {names}",
+            )
+        return entry.plugin
+    if len(found.entry_points) > 1:
+        raise _source_error(
+            found,
+            f"distribution '{found.distribution}' declares several '{ENTRY_POINT_GROUP}' entry "
+            f"points ({names}); set plugins[].plugin to one of them",
+        )
+    return next(iter(found.entry_points))
+
+
+def resolve_source_plugin(entry: PluginEntry, *, base_dir: Path) -> type[Plugin]:
+    """Install ``entry.source`` unless the manifest lists it, then load its chosen entry point."""
+    assert entry.source is not None
+    source = parse_source(entry.source)
+    found = installer.installed(source, base_dir=base_dir)
+    if found is None:
+        found = installer.install(source, base_dir=base_dir, refresh=False)
+        _activate_installs()
+    name = _entry_point_name(entry, found)
+    value = found.entry_points[name]
+    try:
+        target = EntryPoint(name, value, ENTRY_POINT_GROUP).load()
+    except Exception as exc:
+        raise _source_error(
+            found, f"entry point '{name}' ({value}) failed to load: {exc!r}"
+        ) from exc
+    if not (isinstance(target, type) and issubclass(target, Plugin)):
+        raise _source_error(found, f"entry point '{name}' ({value}) is not a Plugin subclass")
+    return target
+
+
 def _validate_config(cls: type[Plugin], entry: PluginEntry, index: int) -> BaseModel:
     try:
         return cls.Config.model_validate(entry.config)
@@ -107,7 +171,11 @@ def load_plugins(
     """Instantiate every configured plugin with its context, in config order."""
     loaded = LoadedPlugins()
     for index, entry in enumerate(config.plugins):
-        cls = resolve_plugin_class(entry.plugin, python_path=config.python_path)
+        if entry.source is not None:
+            cls = resolve_source_plugin(entry, base_dir=config.base_dir or Path.cwd())
+        else:
+            assert entry.plugin is not None
+            cls = resolve_plugin_class(entry.plugin, python_path=config.python_path)
         validated = _validate_config(cls, entry, index)
         timeout = entry.timeout if entry.timeout is not None else cls.timeout
         reload_every = entry.reload_every if entry.reload_every is not None else cls.reload_every

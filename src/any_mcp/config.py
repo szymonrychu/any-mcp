@@ -1,4 +1,4 @@
-"""The any-mcp YAML (or JSON) config file: models, loader and ``--plugin`` shortcut."""
+"""The any-mcp YAML (or JSON) config file: models, loaders and ``--plugin`` shortcut."""
 
 from __future__ import annotations
 
@@ -15,11 +15,13 @@ from pydantic import (
     Field,
     SecretStr,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 
 from any_mcp.errors import ConfigError
+from any_mcp.sources import parse_source
 
 _NAME_PATTERN = r"^[a-z][a-z0-9_-]{0,19}$"
 _VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -61,14 +63,43 @@ class ToolSettings(_Model):
 
 
 class PluginEntry(_Model):
+    """One plugin: a ``plugin`` reference, a ``source`` package, or a source and its entry point."""
+
     name: str = Field(pattern=_NAME_PATTERN)
-    plugin: str
+    source: str | None = None
+    plugin: str | None = None
     namespace: str | None = None
     allow: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     timeout: float | None = Field(default=None, gt=0)
     reload_every: float | None = Field(default=None, gt=0)
     config: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("source")
+    @classmethod
+    def _parse_source(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                parse_source(value)
+            except ConfigError as exc:
+                raise ValueError(str(exc)) from None
+        return value
+
+    @field_validator("plugin")
+    @classmethod
+    def _entry_point_with_source(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is not None and ":" in value and info.data.get("source") is not None:
+            raise ValueError(
+                "with a source, plugin names one of the source package's entry points, "
+                "not module:Class"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _plugin_or_source(self) -> PluginEntry:
+        if self.plugin is None and self.source is None:
+            raise ValueError("an entry needs a plugin, a source or both")
+        return self
 
 
 class AnyMcpConfig(_Model):
@@ -122,10 +153,8 @@ def _validate(data: dict[str, Any], source: str) -> AnyMcpConfig:
         raise ConfigError(f"{source}: {problems}") from None
 
 
-def load_config(
-    path: str | os.PathLike[str], *, env: Mapping[str, str] | None = None
-) -> AnyMcpConfig:
-    """Read a YAML or JSON config file, expand ``${VAR}``/``${VAR:-d}`` and validate it."""
+def _read(path: str | os.PathLike[str]) -> tuple[dict[str, Any], str, Path]:
+    """Parse a config file into its top-level mapping, its display name and its directory."""
     file = Path(path)
     source = str(file)
     try:
@@ -142,15 +171,46 @@ def load_config(
         data = {}
     if not isinstance(data, dict):
         raise ConfigError(f"{source}: top level must be a mapping, got {type(data).__name__}")
+    return data, source, file.resolve().parent
+
+
+def load_config(
+    path: str | os.PathLike[str], *, env: Mapping[str, str] | None = None
+) -> AnyMcpConfig:
+    """Read a YAML or JSON config file, expand ``${VAR}``/``${VAR:-d}`` and validate it."""
+    data, source, base_dir = _read(path)
     data = _expand(data, os.environ if env is None else env, (), source)
     config = _validate(data, source)
-    base_dir = file.resolve().parent
     config.base_dir = base_dir
     config.python_path = [
         str((base_dir / entry).resolve()) if not Path(entry).is_absolute() else entry
         for entry in config.python_path
     ]
     return config
+
+
+def load_sources(
+    path: str | os.PathLike[str], *, env: Mapping[str, str] | None = None
+) -> tuple[list[str], Path]:
+    """The ``plugins[].source`` strings of a config file and the directory they resolve against.
+
+    ``${VAR}`` expands inside the source strings alone and nothing else is validated, so a
+    variable that only a plugin's runtime ``config`` needs may be unset here.
+    """
+    data, source, base_dir = _read(path)
+    plugins = data.get("plugins") or []
+    if not isinstance(plugins, list):
+        raise ConfigError(f"{source}: plugins: must be a list, got {type(plugins).__name__}")
+    found: list[str] = []
+    for index, entry in enumerate(plugins):
+        raw = entry.get("source") if isinstance(entry, dict) else None
+        if raw is None:
+            continue
+        if not isinstance(raw, str):
+            raise ConfigError(f"{source}: plugins.{index}.source: must be a string")
+        where = ("plugins", index, "source")
+        found.append(_expand(raw, os.environ if env is None else env, where, source))
+    return found, base_dir
 
 
 def config_from_plugins(refs: Iterable[str]) -> AnyMcpConfig:
