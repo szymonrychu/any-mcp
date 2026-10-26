@@ -24,6 +24,7 @@ _GIT_SCHEMES = ("https", "ssh", "file")
 _GITHUB_PREFIX = "github.com/"
 _REF_CHARS = re.compile(r"[A-Za-z0-9._/-]+")
 _SCP_LIKE = re.compile(r"[^/:@]+@[^/:]+:")
+_BLANK_OR_CONTROL = re.compile(r"[\s\x00-\x1f\x7f]")
 _SCP_HINT = "scp-like git addresses are not supported, use git::ssh://; "
 _ACCEPTED = (
     "accepted forms: ./<path>, ../<path> or /<path> (local directory); "
@@ -53,6 +54,8 @@ def parse_source(text: str) -> Source:
     def fail(reason: str) -> ConfigError:
         return ConfigError(f"plugin source '{text}': {reason}")
 
+    if _BLANK_OR_CONTROL.search(text):
+        raise fail("a source may not contain whitespace or control characters")
     if text.startswith(_LOCAL_PREFIXES):
         if "//" in text or "?" in text:
             raise fail("a local directory path may not contain '//' or '?'")
@@ -76,6 +79,10 @@ def _parse_git(text: str, rest: str, fail: _Fail) -> Source:
     location, subdir, ref = _split_tail(location, fail)
     if not location:
         raise fail("the git URL is empty")
+    if scheme != "file":
+        host, slash, path = location.partition("/")
+        if not host or not slash or not path:
+            raise fail("a git URL needs a non-empty host and a non-empty repository path")
     return Source(
         raw=text, kind="git", path=None, url=f"{scheme}://{location}", subdir=subdir, ref=ref
     )

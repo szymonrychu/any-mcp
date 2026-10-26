@@ -160,3 +160,43 @@ def test_scp_like_hints_ssh(text):
 @pytest.mark.parametrize("text", ["git::https://", "git::https:////sub", "git::file://?ref=v1"])
 def test_git_url_must_not_be_empty(text):
     assert "URL" in refused(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "git::https://github.com",
+        "git::https://github.com/",
+        "git::https://host//sub",
+        "git::https:///x",
+        "git::ssh://host",
+        "git::ssh:///x",
+    ],
+)
+def test_git_location_needs_host_and_path(text):
+    message = refused(text)
+    assert "host" in message
+    assert "path" in message
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "git::https://example.com/o/r\n",
+        "git::https://exam ple.com/o/r",
+        "git::https://example.com/o/r\t//sub",
+        "git::https://example.com/o/r//su b",
+        "git::https://example.com/o/r?ref=v1\nx",
+        "github.com/o/r\n",
+        "github.com/o/ r",
+        "./a b",
+        "/tmp/a\tb",
+        "git::file:///tmp/a\nb",
+    ],
+)
+def test_whitespace_and_control_refused(text):
+    with pytest.raises(ConfigError) as info:
+        parse_source(text)
+    assert str(info.value) == (
+        f"plugin source '{text}': a source may not contain whitespace or control characters"
+    )
