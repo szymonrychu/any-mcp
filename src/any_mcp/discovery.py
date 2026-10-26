@@ -16,9 +16,8 @@ from any_mcp.config import AnyMcpConfig, PluginEntry
 from any_mcp.context import PluginContext
 from any_mcp.errors import ConfigError
 from any_mcp.http import make_client
+from any_mcp.install import ENTRY_POINT_GROUP
 from any_mcp.plugin import Plugin
-
-ENTRY_POINT_GROUP = "any_mcp.plugins"
 
 
 @dataclass
