@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.0
+
+Adds cross-session messaging to the orchestrator plugin.
+Requires agents-orchestrator with the session messaging agent routes.
+
+- `orchestrator_sessions_list`: `GET /agent/v1/sessions`, the sessions whose leaders the caller can
+  message (every other session for a superleader, otherwise only the superleader sessions).
+- `orchestrator_session_send(slug, text)`: `POST /agent/v1/sessions/{slug}/messages` with body
+  `{"text"}`; leader only, asynchronous, answers a message id. Errors such as `not_leader`,
+  `target_not_superleader`, `hop_limit` and `pair_budget` surface as tool errors with their code.
+- The plugin now lists eleven tools; `OrchestratorConfig` is unchanged.
+
 ## v0.3.0
 
 Breaking: the orchestrator plugin follows the agent-orchestrator rename of clusters to sessions.
