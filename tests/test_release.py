@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PINNED_LINE = (
     "python -m venv /opt/any-mcp && /opt/any-mcp/bin/pip install "
-    '"any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.4.0"'
+    '"any-mcp @ git+https://github.com/szymonrychu/any-mcp@v0.5.0"'
 )
 UV = shutil.which("uv")
 assert UV, "uv is a pinned mise tool and must be on PATH"
@@ -51,7 +51,7 @@ def _commit_head_url() -> str:
 
 def test_versions_agree():
     v = _pyproject_version()
-    assert v == "0.4.0"
+    assert v == "0.5.0"
     assert dist_version("any-mcp") == v
     changelog = (ROOT / "CHANGELOG.md").read_text()
     top = re.search(r"^## (\S+)", changelog, re.M)
@@ -102,7 +102,7 @@ def test_wheel_installs_and_reports_version(tmp_path):
     _run([UV, "venv", venv])
     _run([UV, "pip", "install", "--python", venv, wheel])
     out = _run([venv / "bin" / "any-mcp", "--version"]).stdout
-    assert out.strip() == "any-mcp 0.4.0"
+    assert out.strip() == "any-mcp 0.5.0"
 
 
 def test_install_from_git_head(tmp_path):
@@ -122,7 +122,7 @@ def test_uv_tool_install(tmp_path):
     }
     _run([UV, "tool", "install", wheel], env=env)
     out = _run([tmp_path / "bin" / "any-mcp", "--version"], env=env).stdout
-    assert out.strip() == "any-mcp 0.4.0"
+    assert out.strip() == "any-mcp 0.5.0"
 
 
 def test_onstart_install_path(tmp_path):

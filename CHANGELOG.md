@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.0
+
+Breaking: any-mcp is generic. The built-in orchestrator plugin `any_mcp.orchestrator` is removed,
+with no shim; it now lives in any-mcp-tatara-plugins as `orchestration/orchestrator` (distribution
+`any-mcp-tatara-orchestrator`, entry point `orchestrator`), loaded through a plugin source.
+
+- Plugin sources: `plugins[].source` names a Python package that any-mcp installs and loads, in a
+  subset of Terraform's module source notation: a local directory (`./path`, `../path`, `/path`,
+  relative to the config file, installed editable; spaces allowed), `git::<url>[//<subdir>][?ref=]`
+  over `https://`, `ssh://` or `file://`, and the `github.com/<owner>/<repo>[//<subdir>][?ref=]`
+  shorthand. Invalid sources fail config load: whitespace in remote sources, control characters
+  anywhere, and git URLs without a host and repository path are refused.
+- A source missing from the install manifest is installed at startup (serving or `--list-tools`)
+  before its entry point in the `any_mcp.plugins` group is loaded.
+- `any-mcp plugins install [--config PATH] [SOURCE ...]`: installs each source ahead of the first
+  start, re-resolving branch and tag refs; prints `<source> <distribution> <commit sha or local>`
+  per source and exits `78` on failure.
+- `ANY_MCP_CACHE_DIR`: where git sources are fetched and `manifest.json` is kept (default
+  `<sys.prefix>/any-mcp-sources`).
+- `plugins[].plugin` is optional with a `source`: it then names one of the source package's entry
+  points, needed only when the package declares more than one.
+
 ## v0.4.0
 
 Adds cross-session messaging to the orchestrator plugin.
