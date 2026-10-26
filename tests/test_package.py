@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_version_from_metadata():
     import any_mcp
 
-    assert any_mcp.__version__ == "0.4.0"
+    assert any_mcp.__version__ == "0.5.0"
 
 
 def test_pyproject_declares_dependencies_and_script():
