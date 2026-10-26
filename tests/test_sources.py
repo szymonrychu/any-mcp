@@ -180,23 +180,28 @@ def test_git_location_needs_host_and_path(text):
 
 
 @pytest.mark.parametrize(
-    "text",
+    ("text", "problem"),
     [
-        "git::https://example.com/o/r\n",
-        "git::https://exam ple.com/o/r",
-        "git::https://example.com/o/r\t//sub",
-        "git::https://example.com/o/r//su b",
-        "git::https://example.com/o/r?ref=v1\nx",
-        "github.com/o/r\n",
-        "github.com/o/ r",
-        "./a b",
-        "/tmp/a\tb",
-        "git::file:///tmp/a\nb",
+        ("git::https://example.com/o/r\n", "a remote source may not contain whitespace"),
+        ("git::https://exam ple.com/o/r", "a remote source may not contain whitespace"),
+        ("git::https://h/o/r x", "a remote source may not contain whitespace"),
+        ("git::https://example.com/o/r\t//sub", "a remote source may not contain whitespace"),
+        ("git::https://example.com/o/r//su b", "a remote source may not contain whitespace"),
+        ("git::https://example.com/o/r?ref=v1\nx", "a remote source may not contain whitespace"),
+        ("github.com/o/r\n", "a remote source may not contain whitespace"),
+        ("github.com/o/ r", "a remote source may not contain whitespace"),
+        ("git::file:///tmp/a\nb", "a remote source may not contain whitespace"),
+        ("./a\nb", "a source may not contain control characters"),
+        ("/tmp/a\tb", "a source may not contain control characters"),
+        ("../a\x7fb", "a source may not contain control characters"),
     ],
 )
-def test_whitespace_and_control_refused(text):
+def test_whitespace_and_control_refused(text, problem):
     with pytest.raises(ConfigError) as info:
         parse_source(text)
-    assert str(info.value) == (
-        f"plugin source '{text}': a source may not contain whitespace or control characters"
-    )
+    assert str(info.value).startswith(f"plugin source '{text}': {problem}")
+
+
+@pytest.mark.parametrize("text", ["./my plugins/x", "/Users/me/My Plugins/x", "../a b"])
+def test_local_path_with_space_accepted(text):
+    assert parse_source(text).path == text

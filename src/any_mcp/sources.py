@@ -24,6 +24,7 @@ _GIT_SCHEMES = ("https", "ssh", "file")
 _GITHUB_PREFIX = "github.com/"
 _REF_CHARS = re.compile(r"[A-Za-z0-9._/-]+")
 _SCP_LIKE = re.compile(r"[^/:@]+@[^/:]+:")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _BLANK_OR_CONTROL = re.compile(r"[\s\x00-\x1f\x7f]")
 _SCP_HINT = "scp-like git addresses are not supported, use git::ssh://; "
 _ACCEPTED = (
@@ -54,8 +55,11 @@ def parse_source(text: str) -> Source:
     def fail(reason: str) -> ConfigError:
         return ConfigError(f"plugin source '{text}': {reason}")
 
-    if _BLANK_OR_CONTROL.search(text):
-        raise fail("a source may not contain whitespace or control characters")
+    remote = text.startswith((_GIT_PREFIX, _GITHUB_PREFIX))
+    if remote and _BLANK_OR_CONTROL.search(text):
+        raise fail("a remote source may not contain whitespace or control characters")
+    if _CONTROL.search(text):
+        raise fail("a source may not contain control characters")
     if text.startswith(_LOCAL_PREFIXES):
         if "//" in text or "?" in text:
             raise fail("a local directory path may not contain '//' or '?'")
