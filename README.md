@@ -117,6 +117,10 @@ The [plugin authoring guide](docs/plugin-authoring.md) walks through all of them
 - [Configuration reference](docs/configuration.md): every config key, flag and environment variable.
 - [Transport reference](docs/transports.md): stdio, Streamable HTTP, protocol versions and transport security.
 
+## Development
+
+Run `pre-commit install` once per clone to enable the gitleaks hook.
+
 ## License
 
 MIT, as declared in `pyproject.toml`.
